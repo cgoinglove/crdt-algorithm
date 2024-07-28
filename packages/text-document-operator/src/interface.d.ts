@@ -21,7 +21,6 @@ interface OperationToken {
   type: 'insert' | 'remove';
   id: OID;
   text?: string; // insert에만 필요
-  timestamp: number;
 }
 
 /**
@@ -36,7 +35,7 @@ interface TextCRDT {
   /**
    * 도큐먼트에 새로운 노드를 삽입
    */
-  insert(index: number, priority: number, text: string): void;
+  insert(text: string, preId?: OID, postID?: OID): void;
 
   /**
    * 도큐먼트에서 노드를 제거

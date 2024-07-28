@@ -2,7 +2,14 @@ export class TextDocumentOperator implements TextCRDT {
   private document: Map<OID, string> = new Map();
   private pendingOperations: OperationToken[] = [];
 
-  constructor(private commitFunction: CommitHandler) {}
+  constructor(
+    private author: number,
+    private commitFunction?: CommitHandler,
+  ) {}
+
+  private genarateId(prevId?: OID, postId?: OID): OID {
+    return [1, Date.now() + this.author];
+  }
 
   private generateToken(
     type: 'insert' | 'remove',
@@ -13,7 +20,6 @@ export class TextDocumentOperator implements TextCRDT {
       type,
       id,
       text,
-      timestamp: Date.now(),
     };
   }
 
@@ -40,12 +46,10 @@ export class TextDocumentOperator implements TextCRDT {
     });
   }
   /** unstable */
-  insert(index: number, priority: number, text: string): void {
-    const id: OID = [index, priority];
-    if (!this.document.has(id)) {
-      this.document.set(id, text);
-      this.pendingOperations.push(this.generateToken('insert', id, text));
-    }
+  insert(text: string, preId?: OID, postId?: OID): void {
+    const id: OID = this.genarateId(preId, postId);
+    this.document.set(id, text);
+    this.pendingOperations.push(this.generateToken('insert', id, text));
   }
 
   remove(id: OID): void {
@@ -57,7 +61,7 @@ export class TextDocumentOperator implements TextCRDT {
 
   async commit(): Promise<void> {
     if (this.pendingOperations.length > 0) {
-      await this.commitFunction(this.pendingOperations);
+      await this.commitFunction?.(this.pendingOperations);
       this.pendingOperations = [];
     }
   }
