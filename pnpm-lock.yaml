@@ -151,6 +151,21 @@ importers:
         specifier: ^2.0.4
         version: 2.0.4
 
+  packages/text-document-operator:
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../config-eslint
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../config-typescript
+      typescript:
+        specifier: ^5.3.3
+        version: 5.4.5
+      vitest:
+        specifier: ^2.0.4
+        version: 2.0.4
+
   packages/ui:
     dependencies:
       react:
