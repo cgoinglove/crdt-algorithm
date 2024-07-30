@@ -197,6 +197,21 @@ importers:
         specifier: ^2.0.4
         version: 2.0.4
 
+  t-doc-v2:
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../packages/config-eslint
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../packages/config-typescript
+      typescript:
+        specifier: ^5.3.3
+        version: 5.4.5
+      vitest:
+        specifier: ^2.0.4
+        version: 2.0.4
+
 packages:
 
   /@aashutoshrathi/word-wrap@1.2.6:
