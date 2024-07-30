@@ -17,10 +17,11 @@ interface Node {
 /**
  * 유저의 편집 작업
  */
-interface OperationToken {
+interface Token {
   type: 'insert' | 'remove';
   id: OID;
-  text?: string; // insert에만 필요
+  char?: string; // insert에만 필요
+  hash(): string;
 }
 
 /**
@@ -45,7 +46,7 @@ interface TextCRDT {
   /**
    * 받은 오퍼레이션 토큰(들)을 도큐먼트에 반영
    */
-  merge(token: OperationToken | OperationToken[]): void;
+  merge(token: Token | Token[]): void;
 
   /**
    * 대기 중인 오퍼레이션들을 다른 피어들에게 전송하고 비움
@@ -53,4 +54,4 @@ interface TextCRDT {
   commit(): Promise<void>;
 }
 
-type CommitHandler = (operations: OperationToken[]) => Promise<void>;
+type CommitHandler = (operations: Token[]) => Promise<void>;

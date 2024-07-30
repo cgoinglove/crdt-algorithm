@@ -1,3 +1,5 @@
+import { OperationToken } from './token';
+
 type StableKey = `${number}-${number}`;
 export class TextDocumentOperator implements TextCRDT {
   private keyMap: Map<StableKey, OID> = new Map();
@@ -25,18 +27,6 @@ export class TextDocumentOperator implements TextCRDT {
     this.document.delete(stableId!);
   }
 
-  private generateToken(
-    type: 'insert' | 'remove',
-    id: OID,
-    text?: string,
-  ): OperationToken {
-    return {
-      type,
-      id,
-      text,
-    };
-  }
-
   private generateId(prevId?: OID, postId?: OID): OID {
     const index = (() => {
       if (prevId?.[0] == undefined) return 0;
@@ -44,7 +34,7 @@ export class TextDocumentOperator implements TextCRDT {
       return prevId[0] + 1;
     })();
 
-    const priority = Date.now() + this.author;
+    const priority = Number(`${Date.now()}${this.author}`);
     let newId: OID = [index, priority];
 
     while (this.keyMap.has(this.toStableKey(newId))) {
@@ -66,7 +56,10 @@ export class TextDocumentOperator implements TextCRDT {
 
   /** unstable */
   merge(token: OperationToken | OperationToken[]): void {
-    const tokens = [token].flat();
+    const duplicateTokens = this.pendingOperations.map(token => token.hash());
+    const tokens = [token]
+      .flat()
+      .filter(token => !duplicateTokens.includes(token.hash()));
     tokens.forEach(op => {
       if (op.type === 'insert') {
         this.setDocument(op.id, op.text!);
@@ -79,14 +72,14 @@ export class TextDocumentOperator implements TextCRDT {
   insert(text: string, preId?: OID, postId?: OID): OID {
     const id: OID = this.generateId(preId, postId);
     this.setDocument(id, text);
-    this.pendingOperations.push(this.generateToken('insert', id, text));
+    this.pendingOperations.push(OperationToken.of('insert', id, text));
     return id;
   }
 
   remove(id: OID): void {
     if (this.keyMap.has(this.toStableKey(id))) {
       this.deleteDocument(id);
-      this.pendingOperations.push(this.generateToken('remove', id));
+      this.pendingOperations.push(OperationToken.of('remove', id));
     }
   }
 
