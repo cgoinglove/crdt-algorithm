@@ -1,29 +1,56 @@
 export type OID = [author: number, clock: number];
 
 export type CommitHandler = (operations: OperationToken[]) => Promise<void>;
-
 export class OperationToken {
   type: 'insert' | 'remove';
   id: OID;
-  text?: string;
+  prevId?: OID;
+  content?: string;
+  timestamp: number; // New field to handle ordering
 
-  private constructor(type: 'insert' | 'remove', id: OID, text?: string) {
+  private constructor(
+    type: 'insert' | 'remove',
+    id: OID,
+    prevId?: OID,
+    content?: string,
+    timestamp: number = Date.now(),
+  ) {
     this.type = type;
     this.id = id;
-    this.text = text;
+    this.prevId = prevId;
+    this.content = content;
+    this.timestamp = timestamp;
   }
 
-  static of(type: 'insert' | 'remove', id: OID, text?: string): OperationToken {
-    return new OperationToken(type, id, text);
+  static of(
+    type: 'insert' | 'remove',
+    id: OID,
+    prevId?: OID,
+    content?: string,
+    timestamp?: number,
+  ): OperationToken {
+    return new OperationToken(type, id, prevId, content, timestamp);
   }
 
   static fromHash(hash: string): OperationToken {
-    const [type, id, text] = JSON.parse(hash);
-    return OperationToken.of(type as 'insert' | 'remove', id, text);
+    const [type, id, prevId, content, timestamp] = JSON.parse(hash);
+    return OperationToken.of(
+      type as 'insert' | 'remove',
+      id,
+      prevId,
+      content,
+      timestamp,
+    );
   }
 
   hash(): string {
-    return JSON.stringify([this.type, this.id, this.text || '']);
+    return JSON.stringify([
+      this.type,
+      this.id,
+      this.prevId,
+      this.content || '',
+      this.timestamp,
+    ]);
   }
 }
 
@@ -36,28 +63,14 @@ class Node {
     this.id = id;
     this.content = content;
   }
-  // split(offset: number): Node {
-  //   const newItem = new Node(this.id, this.content.slice(offset));
-  //   this.content = this.content.slice(0, offset);
-  //   newItem.right = this.right;
-  //   if (this.right) {
-  //     this.right.left = newItem;
-  //   }
-  //   this.right = newItem;
-  //   newItem.left = this;
-  //   return newItem;
-  // }
-
-  // deleteRange(start: number, end: number): void {
-  //   this.content = this.content.slice(0, start) + this.content.slice(end);
-  // }
 }
 export class DocumentTree {
-  root: Node | null = null;
-  clientID: number;
-  clock: number = 0;
+  private clientID: number;
+  private clock: number = 0;
+  private commitFunction?: CommitHandler;
+
+  root: Node | undefined;
   pendingOperations: OperationToken[] = [];
-  commitFunction?: CommitHandler;
 
   constructor(clientID: number, commitFunction?: CommitHandler) {
     this.clientID = clientID;
@@ -68,19 +81,22 @@ export class DocumentTree {
     return [this.clientID, this.clock++];
   }
 
-  insert(content: string, prev?: OID): OID {
+  insert(content: string, prevId?: OID): OID {
     const id = this.generateID();
     const node = new Node(id, content);
     if (!this.root) {
       this.root = node;
     } else {
-      const prevNode = this.findItem(prev);
+      if (!prevId) throw new Error('이전 아이디는 필수');
+      const prevNode = this.findItem(prevId);
       if (!prevNode) throw new Error('잘못된 경로');
       const nextNode = prevNode?.next;
       prevNode.next = node;
       node.next = nextNode;
     }
-    this.pendingOperations.push(OperationToken.of('insert', id, content));
+    this.pendingOperations.push(
+      OperationToken.of('insert', id, prevId, content),
+    );
     return id;
   }
 
@@ -94,7 +110,7 @@ export class DocumentTree {
       while (prev?.next) {
         if (this.compareID(prev.next.id, id) === 0) {
           prev.next = item.next;
-          prev = null;
+          prev = undefined;
           break;
         }
         prev = prev.next;
@@ -141,9 +157,24 @@ export class DocumentTree {
 
   merge(token: OperationToken | OperationToken[]): void {
     const tokens = Array.isArray(token) ? token : [token];
+    tokens.sort((a, b) => {
+      if (a.prevId === b.prevId) {
+        return a.timestamp - b.timestamp || a.id[0] - b.id[0];
+      }
+      return 0;
+    });
+
     tokens.forEach(op => {
       if (op.type === 'insert') {
-        this.insert(op.text!, op.id);
+        // Adjust to allow multiple inserts at the same prevId
+        const prevNodeExists = this.findItem(op.prevId!);
+        if (prevNodeExists) {
+          this.insert(op.content!, op.prevId);
+        } else {
+          // If previous node doesn't exist, insert at root
+          // But typically should handle reordering or flagging this operation
+          this.insert(op.content!, undefined);
+        }
       } else if (op.type === 'remove') {
         this.remove(op.id);
       }
