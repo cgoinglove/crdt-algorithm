@@ -2,7 +2,7 @@ export type OID = [author: number, clock: number];
 
 export type CommitHandler = (operations: OperationToken[]) => Promise<void>;
 
-class OperationToken {
+export class OperationToken {
   type: 'insert' | 'remove';
   id: OID;
   text?: string;
@@ -27,36 +27,33 @@ class OperationToken {
   }
 }
 
-class Item {
+class Node {
   id: OID;
   content: string;
-  left: Item | null = null;
-  right: Item | null = null;
-  parent: Item | null = null;
+  next?: Node;
 
   constructor(id: OID, content: string) {
     this.id = id;
     this.content = content;
   }
+  // split(offset: number): Node {
+  //   const newItem = new Node(this.id, this.content.slice(offset));
+  //   this.content = this.content.slice(0, offset);
+  //   newItem.right = this.right;
+  //   if (this.right) {
+  //     this.right.left = newItem;
+  //   }
+  //   this.right = newItem;
+  //   newItem.left = this;
+  //   return newItem;
+  // }
 
-  split(offset: number): Item {
-    const newItem = new Item(this.id, this.content.slice(offset));
-    this.content = this.content.slice(0, offset);
-    newItem.right = this.right;
-    if (this.right) {
-      this.right.left = newItem;
-    }
-    this.right = newItem;
-    newItem.left = this;
-    return newItem;
-  }
-
-  deleteRange(start: number, end: number): void {
-    this.content = this.content.slice(0, start) + this.content.slice(end);
-  }
+  // deleteRange(start: number, end: number): void {
+  //   this.content = this.content.slice(0, start) + this.content.slice(end);
+  // }
 }
 export class DocumentTree {
-  root: Item | null = null;
+  root: Node | null = null;
   clientID: number;
   clock: number = 0;
   pendingOperations: OperationToken[] = [];
@@ -71,63 +68,49 @@ export class DocumentTree {
     return [this.clientID, this.clock++];
   }
 
-  insert(content: string, leftID?: OID, rightID?: OID): OID {
+  insert(content: string, prev?: OID): OID {
     const id = this.generateID();
-    const newItem = new Item(id, content);
-
+    const node = new Node(id, content);
     if (!this.root) {
-      this.root = newItem;
+      this.root = node;
     } else {
-      let leftNode = leftID ? this.findItem(leftID) : null;
-      let rightNode = rightID ? this.findItem(rightID) : null;
-
-      if (leftNode) {
-        newItem.left = leftNode;
-        leftNode.right = newItem;
-      }
-
-      if (rightNode) {
-        newItem.right = rightNode;
-        rightNode.left = newItem;
-      }
-
-      if (!leftNode && !rightNode) {
-        let current = this.root;
-        while (current.right) {
-          current = current.right;
-        }
-        current.right = newItem;
-        newItem.left = current;
-      }
+      const prevNode = this.findItem(prev);
+      if (!prevNode) throw new Error('잘못된 경로');
+      const nextNode = prevNode?.next;
+      prevNode.next = node;
+      node.next = nextNode;
     }
-
     this.pendingOperations.push(OperationToken.of('insert', id, content));
     return id;
   }
 
   remove(id: OID): void {
     const item = this.findItem(id);
-    if (item) {
-      if (item.left) {
-        item.left.right = item.right;
+    if (!item) throw new Error('잘못된 경로');
+    if (item == this.root) {
+      this.root = this.root?.next;
+    } else {
+      let prev = this.root;
+      while (prev?.next) {
+        if (this.compareID(prev.next.id, id) === 0) {
+          prev.next = item.next;
+          prev = null;
+          break;
+        }
+        prev = prev.next;
       }
-      if (item.right) {
-        item.right.left = item.left;
-      }
-      if (item === this.root) {
-        this.root = item.right;
-      }
-      this.pendingOperations.push(OperationToken.of('remove', id));
     }
+
+    this.pendingOperations.push(OperationToken.of('remove', id));
   }
 
-  findItem(id: OID): Item | null {
+  findItem(id: OID): Node | null {
     let current = this.root;
     while (current) {
       if (this.compareID(current.id, id) === 0) {
         return current;
       }
-      current = current.right;
+      current = current.next;
     }
     return null;
   }
@@ -144,7 +127,7 @@ export class DocumentTree {
     let current = this.root;
     while (current) {
       result += current.content;
-      current = current.right;
+      current = current.next;
     }
     return result;
   }

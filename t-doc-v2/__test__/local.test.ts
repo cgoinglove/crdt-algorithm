@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { CommitHandler, DocumentTree, OID } from '../src';
-import { OperationToken } from '../src/token';
+import { CommitHandler, DocumentTree, OID, OperationToken } from '../src';
 
 describe('DocumentTree', () => {
   let docTree: DocumentTree;
@@ -34,6 +33,14 @@ describe('DocumentTree', () => {
     expect(docTree.stringify()).toBe('Hello');
   });
 
+  it('left, right', () => {
+    const rootId = docTree.insert('Hello');
+    const A = docTree.insert('World', rootId);
+    expect(docTree.stringify()).toBe('HelloWorld');
+    const space = docTree.insert(' ', rootId);
+    expect(docTree.stringify()).toBe('Hello World');
+  });
+
   it('should commit pending operations', async () => {
     const id = docTree.insert('Hello');
     await docTree.commit();
@@ -59,14 +66,6 @@ describe('DocumentTree', () => {
   it('should handle concurrent inserts', () => {
     const id1 = docTree.insert('Hello');
     const id2 = docTree.insert('World', id1);
-    expect(docTree.stringify()).toBe('HelloWorld');
-  });
-
-  it('should handle edge case with identical indexes', () => {
-    const id1: OID = [1, 0];
-    const id2: OID = [1, 1];
-    docTree.insert('Hello', id1);
-    docTree.insert('World', id2);
     expect(docTree.stringify()).toBe('HelloWorld');
   });
 
