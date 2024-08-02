@@ -14,6 +14,7 @@
     "typescript": "^5.3.3",
     "vitest": "^2.0.4",
     "@repo/eslint-config": "workspace:*",
+    "@repo/shared": "workspace:*",
     "@repo/typescript-config": "workspace:*"
   }
 }

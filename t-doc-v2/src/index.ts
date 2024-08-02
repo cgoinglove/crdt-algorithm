@@ -1,133 +1,116 @@
-export type OID = [author: number, clock: number];
-
+import { createIncrement } from '@repo/shared';
 export type CommitHandler = (operations: OperationToken[]) => Promise<void>;
 
-export class OperationToken {
-  type: 'insert' | 'remove';
-  id: OID;
-  text?: string;
+export class OperationToken implements Operation {
+  private constructor(
+    public readonly type: Operation['type'],
+    public readonly node: Operation['node'],
+    public readonly timestamp: Operation['timestamp'],
+  ) {}
 
-  private constructor(type: 'insert' | 'remove', id: OID, text?: string) {
-    this.type = type;
-    this.id = id;
-    this.text = text;
-  }
-
-  static of(type: 'insert' | 'remove', id: OID, text?: string): OperationToken {
-    return new OperationToken(type, id, text);
+  static gen(type: Operation['type'], node: Operation['node']): OperationToken {
+    return new OperationToken(type, node, Date.now());
   }
 
   static fromHash(hash: string): OperationToken {
-    const [type, id, text] = JSON.parse(hash);
-    return OperationToken.of(type as 'insert' | 'remove', id, text);
+    const [type, node, timestamp] = JSON.parse(hash);
+    return new OperationToken(type, node, timestamp);
   }
 
   hash(): string {
-    return JSON.stringify([this.type, this.id, this.text || '']);
+    return JSON.stringify([this.type, this.node, this.timestamp]);
   }
 }
 
-class Node {
-  id: OID;
-  content: string;
-  next?: Node;
+const increment = createIncrement();
 
-  constructor(id: OID, content: string) {
-    this.id = id;
-    this.content = content;
-  }
-  // split(offset: number): Node {
-  //   const newItem = new Node(this.id, this.content.slice(offset));
-  //   this.content = this.content.slice(0, offset);
-  //   newItem.right = this.right;
-  //   if (this.right) {
-  //     this.right.left = newItem;
-  //   }
-  //   this.right = newItem;
-  //   newItem.left = this;
-  //   return newItem;
-  // }
-
-  // deleteRange(start: number, end: number): void {
-  //   this.content = this.content.slice(0, start) + this.content.slice(end);
-  // }
-}
-export class DocumentTree {
-  root: Node | null = null;
-  clientID: number;
-  clock: number = 0;
+export class DocumentOperator implements CRDT {
+  readonly document = new Map<ID, Node>();
+  root: Node | undefined;
   pendingOperations: OperationToken[] = [];
   commitFunction?: CommitHandler;
 
-  constructor(clientID: number, commitFunction?: CommitHandler) {
-    this.clientID = clientID;
+  constructor(
+    private clientID: string,
+    commitFunction?: CommitHandler,
+  ) {
     this.commitFunction = commitFunction;
   }
 
-  generateID(): OID {
-    return [this.clientID, this.clock++];
+  private genNode(content: Node['content'], left?: ID, right?: ID): Node {
+    return {
+      author: this.clientID,
+      id: increment(),
+      content,
+      left,
+      right,
+    };
   }
+  update(id: ID, content: string): void {
+    const node = this.document.get(id);
+    if (!node) throw new Error('존재하지 않는 Node 입니다.');
+    node.content = content;
+    this.pendingOperations.push(OperationToken.gen('update', node));
+  }
+  insert(content: string, left?: ID): ID {
+    const leftNode = this.document.get(left!);
 
-  insert(content: string, prev?: OID): OID {
-    const id = this.generateID();
-    const node = new Node(id, content);
-    if (!this.root) {
-      this.root = node;
-    } else {
-      const prevNode = this.findItem(prev);
-      if (!prevNode) throw new Error('잘못된 경로');
-      const nextNode = prevNode?.next;
-      prevNode.next = node;
-      node.next = nextNode;
+    const hasRoot = Boolean(this.root);
+
+    // has root
+    if (hasRoot && !leftNode) throw new Error('잘못된 경로 입니다.');
+
+    const node = this.genNode(content, left);
+    // 중복 처리
+
+    if (leftNode) {
+      node.left = leftNode.id;
+      node.right = leftNode.right;
+      leftNode.right = node.id;
     }
-    this.pendingOperations.push(OperationToken.of('insert', id, content));
-    return id;
+    if (!hasRoot) this.root = node;
+    this.document.set(node.id, node);
+    this.pendingOperations.push(OperationToken.gen('insert', node));
+    return node.id;
   }
 
-  remove(id: OID): void {
-    const item = this.findItem(id);
-    if (!item) throw new Error('잘못된 경로');
-    if (item == this.root) {
-      this.root = this.root?.next;
-    } else {
-      let prev = this.root;
-      while (prev?.next) {
-        if (this.compareID(prev.next.id, id) === 0) {
-          prev.next = item.next;
-          prev = null;
-          break;
-        }
-        prev = prev.next;
-      }
+  split(id: ID, index: number) {
+    const node = this.document.get(id);
+    if (!node) throw new Error('존재하지 않는 Node 입니다.');
+
+    const rightContent = node.content.slice(index);
+    this.update(node.id, node.content.slice(0, index));
+    const newId = this.insert(rightContent, node.id);
+    return this.document.get(newId)!;
+  }
+
+  remove(id: ID): void {
+    const node = this.document.get(id);
+    if (!node) throw new Error('존재하지 않는 Node 입니다.');
+
+    const leftNode = this.document.get(node.left!);
+    const rightNode = this.document.get(node.right!);
+
+    if (!leftNode) {
+      this.root = rightNode;
     }
 
-    this.pendingOperations.push(OperationToken.of('remove', id));
-  }
-
-  findItem(id: OID): Node | null {
-    let current = this.root;
-    while (current) {
-      if (this.compareID(current.id, id) === 0) {
-        return current;
-      }
-      current = current.next;
+    if (leftNode) {
+      leftNode.right = rightNode?.id;
     }
-    return null;
-  }
-
-  compareID(id1: OID, id2: OID): number {
-    if (id1[0] === id2[0]) {
-      return id1[1] - id2[1];
+    if (rightNode) {
+      rightNode.left = leftNode?.id;
     }
-    return id1[0] - id2[0];
-  }
 
+    this.document.delete(id);
+    this.pendingOperations.push(OperationToken.gen('remove', node));
+  }
   stringify(): string {
+    let node = this.root;
     let result = '';
-    let current = this.root;
-    while (current) {
-      result += current.content;
-      current = current.next;
+    while (node) {
+      result += node.content;
+      node = this.document.get(node.right!);
     }
     return result;
   }
@@ -143,9 +126,11 @@ export class DocumentTree {
     const tokens = Array.isArray(token) ? token : [token];
     tokens.forEach(op => {
       if (op.type === 'insert') {
-        this.insert(op.text!, op.id);
+        this.insert(op.node.content!, op.node.left);
       } else if (op.type === 'remove') {
-        this.remove(op.id);
+        this.remove(op.node.id);
+      } else if (op.type === 'update') {
+        this.update(op.node.id, op.node.content);
       }
     });
   }
