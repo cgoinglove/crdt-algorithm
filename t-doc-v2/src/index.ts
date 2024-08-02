@@ -29,7 +29,7 @@ export class DocumentOperator implements CRDT {
   root: Node | undefined;
   pendingOperations: OperationToken[] = [];
 
-  constructor(public clientID: string) {}
+  constructor(private clientID: string) {}
 
   private pushPendingOperations(type: OperationToken['type'], node: Node) {
     if (node.author === this.clientID)
@@ -53,6 +53,7 @@ export class DocumentOperator implements CRDT {
     this.pushPendingOperations('update', localNode);
   }
   insert(node: Node) {
+    console.log(`insert ${this.clientID}`);
     const leftNode = this.document.get(node.left!) || this.root;
 
     if (!leftNode) this.root = node;

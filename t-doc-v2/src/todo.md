@@ -1,0 +1,3 @@
+- [ ] update 는 없어야함 (병합불가)
+- [ ] split 에대한 연산 작업 다시작성
+- [ ] merge 할경우 기존 localOperation 들과 비교 및 수정 해야함
