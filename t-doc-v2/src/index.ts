@@ -1,5 +1,5 @@
 import { createIncrement } from '@repo/shared';
-export type CommitHandler = (operations: OperationToken[]) => Promise<void>;
+export type CommitHandler = (operations: OperationToken[]) => any;
 
 export class OperationToken implements Operation {
   private constructor(
@@ -25,19 +25,18 @@ export class OperationToken implements Operation {
 const increment = createIncrement();
 
 export class DocumentOperator implements CRDT {
-  readonly document = new Map<ID, Node>();
+  document = new Map<ID, Node>();
   root: Node | undefined;
   pendingOperations: OperationToken[] = [];
-  commitFunction?: CommitHandler;
 
-  constructor(
-    private clientID: string,
-    commitFunction?: CommitHandler,
-  ) {
-    this.commitFunction = commitFunction;
+  constructor(public clientID: string) {}
+
+  private pushPendingOperations(type: OperationToken['type'], node: Node) {
+    if (node.author === this.clientID)
+      this.pendingOperations.push(OperationToken.gen(type, node));
   }
 
-  private genNode(content: Node['content'], left?: ID, right?: ID): Node {
+  gen(content: Node['content'], left?: ID, right?: ID): Node {
     return {
       author: this.clientID,
       id: increment(),
@@ -46,42 +45,40 @@ export class DocumentOperator implements CRDT {
       right,
     };
   }
-  update(id: ID, content: string): void {
-    const node = this.document.get(id);
-    if (!node) throw new Error('존재하지 않는 Node 입니다.');
-    node.content = content;
-    this.pendingOperations.push(OperationToken.gen('update', node));
+
+  update(node: Node): void {
+    const localNode = this.document.get(node.id);
+    if (!localNode) throw new Error('존재하지 않는 Node 입니다.');
+    localNode.content = node.content;
+    this.pushPendingOperations('update', localNode);
   }
-  insert(content: string, left?: ID): ID {
-    const leftNode = this.document.get(left!);
+  insert(node: Node) {
+    const leftNode = this.document.get(node.left!) || this.root;
 
-    const hasRoot = Boolean(this.root);
-
-    // has root
-    if (hasRoot && !leftNode) throw new Error('잘못된 경로 입니다.');
-
-    const node = this.genNode(content, left);
-    // 중복 처리
-
-    if (leftNode) {
+    if (!leftNode) this.root = node;
+    else {
       node.left = leftNode.id;
       node.right = leftNode.right;
       leftNode.right = node.id;
     }
-    if (!hasRoot) this.root = node;
+
     this.document.set(node.id, node);
-    this.pendingOperations.push(OperationToken.gen('insert', node));
+    this.pushPendingOperations('insert', node);
     return node.id;
   }
 
   split(id: ID, index: number) {
-    const node = this.document.get(id);
-    if (!node) throw new Error('존재하지 않는 Node 입니다.');
+    const leftNode = this.document.get(id);
+    if (!leftNode) throw new Error('존재하지 않는 Node 입니다.');
 
-    const rightContent = node.content.slice(index);
-    this.update(node.id, node.content.slice(0, index));
-    const newId = this.insert(rightContent, node.id);
-    return this.document.get(newId)!;
+    const leftContent = leftNode.content.slice(0, index);
+    const rightContent = leftNode.content.slice(index);
+
+    leftNode.content = leftContent;
+    const rightNode = this.gen(rightContent, leftNode.id);
+
+    this.update(leftNode);
+    this.insert(rightNode);
   }
 
   remove(id: ID): void {
@@ -103,7 +100,7 @@ export class DocumentOperator implements CRDT {
     }
 
     this.document.delete(id);
-    this.pendingOperations.push(OperationToken.gen('remove', node));
+    this.pushPendingOperations('remove', node);
   }
   stringify(): string {
     let node = this.root;
@@ -115,22 +112,23 @@ export class DocumentOperator implements CRDT {
     return result;
   }
 
-  async commit(): Promise<void> {
-    if (this.pendingOperations.length > 0) {
-      await this.commitFunction?.(this.pendingOperations);
-      this.pendingOperations = [];
-    }
+  commit() {
+    return this.pendingOperations.splice(-this.pendingOperations.length);
   }
 
   merge(token: OperationToken | OperationToken[]): void {
-    const tokens = Array.isArray(token) ? token : [token];
+    const tokens = [token].flat();
     tokens.forEach(op => {
-      if (op.type === 'insert') {
-        this.insert(op.node.content!, op.node.left);
-      } else if (op.type === 'remove') {
-        this.remove(op.node.id);
-      } else if (op.type === 'update') {
-        this.update(op.node.id, op.node.content);
+      switch (op.type) {
+        case 'insert':
+          this.insert(op.node);
+          break;
+        case 'update':
+          this.update(op.node);
+          break;
+        case 'remove':
+          this.remove(op.node.id);
+          break;
       }
     });
   }

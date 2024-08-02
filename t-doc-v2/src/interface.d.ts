@@ -15,12 +15,11 @@ interface Operation {
 }
 
 interface CRDT {
-  readonly document: Map<ID, Node>;
-  insert(content: Node['content'], left?: ID): ID;
-  update(id:ID,content:string): void;
+  insert(node: Node): void;
+  update(node: Node): void;
   remove(id: ID): void;
-  split(id: ID, index: number):Node;
+  split(id: ID, index: number): void;
   stringify(): string;
-  commit(): void | Promise<void>;
   merge(token: Operation | Operation[]): void;
+  commit(): Operation[];
 }
