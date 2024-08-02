@@ -33,7 +33,7 @@ describe('DocumentTree', () => {
     expect(docTree.stringify()).toBe('Hello');
   });
 
-  it('should correctly insert item between existing nodes', () => {
+  it('left, right', () => {
     const rootId = docTree.insert('Hello');
     const A = docTree.insert('World', rootId);
     expect(docTree.stringify()).toBe('HelloWorld');
@@ -47,11 +47,11 @@ describe('DocumentTree', () => {
     expect(operationsCommitted.length).toBe(1);
     expect(operationsCommitted[0].type).toBe('insert');
     expect(operationsCommitted[0].id).toEqual(id);
-    expect(operationsCommitted[0].content).toBe('Hello');
+    expect(operationsCommitted[0].text).toBe('Hello');
   });
 
   it('should merge insert operations correctly', () => {
-    const token = OperationToken.of('insert', [2, 0], undefined, 'Hello');
+    const token = OperationToken.of('insert', [2, 0], 'Hello');
     docTree.merge(token);
     expect(docTree.stringify()).toBe('Hello');
   });
@@ -70,11 +70,11 @@ describe('DocumentTree', () => {
   });
 
   it('should generate and parse hash correctly', () => {
-    const token = OperationToken.of('insert', [1, 2], undefined, 'Hello');
+    const token = OperationToken.of('insert', [1, 2], 'Hello');
     const hash = token.hash();
     const parsedToken = OperationToken.fromHash(hash);
     expect(parsedToken.type).toBe(token.type);
     expect(parsedToken.id).toEqual(token.id);
-    expect(parsedToken.content).toBe(token.content);
+    expect(parsedToken.text).toBe(token.text);
   });
 });
