@@ -1,134 +1,157 @@
-import { createIncrement } from '@repo/shared';
-export type CommitHandler = (operations: OperationToken[]) => any;
+import { autoIncrement } from '@repo/shared';
+
+const generateId: () => ID = autoIncrement;
+
+const generateClock: () => Operation['clock'] = autoIncrement;
+
+export type CommitHandler<T = any> = (
+  operations: OperationToken[],
+  rollback: () => void,
+) => T;
 
 export class OperationToken implements Operation {
   private constructor(
-    public readonly type: Operation['type'],
-    public readonly node: Operation['node'],
-    public readonly timestamp: Operation['timestamp'],
+    public type: Operation['type'],
+    public id: Operation['id'],
+    public author: Operation['author'],
+    public clock: Operation['clock'],
+    public content?: Operation['content'],
+    public parent?: Operation['parent'],
   ) {}
 
-  static gen(type: Operation['type'], node: Operation['node']): OperationToken {
-    return new OperationToken(type, node, Date.now());
+  static ofInsert(operation: Pick<Operation, 'author' | 'content' | 'parent'>) {
+    return new OperationToken(
+      'insert',
+      generateId(),
+      operation.author,
+      generateClock(),
+      operation.content,
+      operation.parent,
+    );
   }
-
+  static ofDelete(operation: Pick<Operation, 'author' | 'id'>) {
+    return new OperationToken(
+      'delete',
+      operation.id,
+      operation.author,
+      generateClock(),
+    );
+  }
+  static hash(token: Operation): string {
+    const args: any[] = [token.type, token.id, token.author, token.clock];
+    if (token.type == 'insert') args.push(token.content, token.parent);
+    return JSON.stringify(args);
+  }
   static fromHash(hash: string): OperationToken {
-    const [type, node, timestamp] = JSON.parse(hash);
-    return new OperationToken(type, node, timestamp);
-  }
-
-  hash(): string {
-    return JSON.stringify([this.type, this.node, this.timestamp]);
+    const [type, id, author, clock, content, parent] = JSON.parse(hash);
+    switch (type as Operation['type']) {
+      case 'insert':
+        return new OperationToken(type, id, author, clock, content, parent);
+      case 'delete':
+        return new OperationToken(type, id, author, clock);
+      default:
+        throw new Error('TypeError');
+    }
   }
 }
 
-const increment = createIncrement();
+export class DocumentOperator<T = OperationToken[]> implements CRDT {
+  private document: Node | undefined;
+  private pendingTokens: OperationToken[] = [];
+  // for undo
+  private histories: OperationToken[] = [];
 
-export class DocumentOperator implements CRDT {
-  document = new Map<ID, Node>();
-  root: Node | undefined;
-  pendingOperations: OperationToken[] = [];
+  constructor(
+    private clientID: string,
+    private commitHandler?: CommitHandler<T>,
+  ) {}
 
-  constructor(private clientID: string) {}
-
-  private pushPendingOperations(type: OperationToken['type'], node: Node) {
-    if (node.author === this.clientID)
-      this.pendingOperations.push(OperationToken.gen(type, node));
+  private getParent(id: ID): Node | undefined {
+    if (this.document?.id == id) return undefined;
+    let current: Node | undefined = this.document;
+    while (current?.next) {
+      if (current.next.id == id) return current;
+      if (current.id == id) return;
+      current = current.next;
+    }
   }
 
-  gen(content: Node['content'], left?: ID, right?: ID): Node {
-    return {
-      author: this.clientID,
-      id: increment(),
-      content,
-      left,
-      right,
+  private getNode(id: ID): Node | undefined {
+    if (id == this.document?.id) return this.document;
+    return this.getParent(id)?.next;
+  }
+
+  private _insert(operation: OperationToken) {
+    const parent = this.getParent(operation.id!);
+    if (this.document && !parent) throw new Error('잘못된 경로');
+
+    const newNode: Node = {
+      content: operation.content!,
+      id: operation.id,
+      next: parent?.next,
     };
+    if (parent) parent.next = newNode;
+    else this.document = newNode;
   }
 
-  update(node: Node): void {
-    const localNode = this.document.get(node.id);
-    if (!localNode) throw new Error('존재하지 않는 Node 입니다.');
-    localNode.content = node.content;
-    this.pushPendingOperations('update', localNode);
+  private _delete(node: Operation): void {
+    const parent = this.getParent(node.id);
+    const currentNode = parent?.next;
+    if (this.document && !parent) throw new Error('잘못된 경로');
+    if (!currentNode) return;
+    // is Root
+    if (this.document == currentNode) this.document = undefined;
+    else parent!.next = currentNode.next;
   }
-  insert(node: Node) {
-    console.log(`insert ${this.clientID}`);
-    const leftNode = this.document.get(node.left!) || this.root;
-
-    if (!leftNode) this.root = node;
-    else {
-      node.left = leftNode.id;
-      node.right = leftNode.right;
-      leftNode.right = node.id;
-    }
-
-    this.document.set(node.id, node);
-    this.pushPendingOperations('insert', node);
-    return node.id;
+  private addToken(token: OperationToken) {
+    this.pendingTokens.push(token);
+    // max histories 10;
+    this.histories = [...this.histories.slice(0, 9), token];
   }
 
-  split(id: ID, index: number) {
-    const leftNode = this.document.get(id);
-    if (!leftNode) throw new Error('존재하지 않는 Node 입니다.');
-
-    const leftContent = leftNode.content.slice(0, index);
-    const rightContent = leftNode.content.slice(index);
-
-    leftNode.content = leftContent;
-    const rightNode = this.gen(rightContent, leftNode.id);
-
-    this.update(leftNode);
-    this.insert(rightNode);
+  commit(): T {
+    const operations = this.pendingTokens.splice(-this.pendingTokens.length);
+    //@todo operations duplicate 작업  insert 한걸 delete 한 경우 와 같이
+    const rollback = () => this.pendingTokens.unshift(...operations);
+    if (this.commitHandler)
+      return this.commitHandler(this.pendingTokens, rollback);
+    return operations as T;
   }
-
-  remove(id: ID): void {
-    const node = this.document.get(id);
-    if (!node) throw new Error('존재하지 않는 Node 입니다.');
-
-    const leftNode = this.document.get(node.left!);
-    const rightNode = this.document.get(node.right!);
-
-    if (!leftNode) {
-      this.root = rightNode;
-    }
-
-    if (leftNode) {
-      leftNode.right = rightNode?.id;
-    }
-    if (rightNode) {
-      rightNode.left = leftNode?.id;
-    }
-
-    this.document.delete(id);
-    this.pushPendingOperations('remove', node);
+  insert(content: string, parent?: ID) {
+    const token = OperationToken.ofInsert({
+      author: this.clientID,
+      content,
+      parent,
+    });
+    this._insert(token);
+    this.addToken(token);
+  }
+  delete(id: ID) {
+    const token = OperationToken.ofDelete({
+      author: this.clientID,
+      id,
+    });
+    this._delete(token);
+    this.addToken(token);
   }
   stringify(): string {
-    let node = this.root;
+    let node = this.document;
     let result = '';
     while (node) {
       result += node.content;
-      node = this.document.get(node.right!);
+      node = node.next;
     }
     return result;
   }
-
-  commit() {
-    return this.pendingOperations.splice(-this.pendingOperations.length);
-  }
-
   merge(token: OperationToken | OperationToken[]): void {
     const tokens = [token].flat();
     tokens.forEach(op => {
       switch (op.type) {
         case 'insert':
-          this.insert(op.node);
+          this._insert(op);
           break;
-        case 'update':
-          this.update(op.node);
-          break;
-        case 'remove':
-          this.remove(op.node.id);
+        case 'delete':
+          this._delete(op);
           break;
       }
     });
