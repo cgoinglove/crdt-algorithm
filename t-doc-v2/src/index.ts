@@ -12,12 +12,10 @@ export class Doc<T = Operation[]> implements RGA {
   private pendingTokens: Operation[];
   // for undo
   private histories: Operation[];
-  private logicalClock: LamportClock;
 
   constructor(private commitHandler?: CommitHandler<T>) {
     this.pendingTokens = [];
     this.histories = [];
-    this.logicalClock = new LamportClock();
   }
 
   private getParent(id: ID): Node | undefined {
@@ -37,7 +35,6 @@ export class Doc<T = Operation[]> implements RGA {
   private _insert(operation: Operation) {
     const parent = this.getParent(operation.id!);
     if (this.document && !parent) throw new Error('잘못된 경로');
-
     const newNode: Node = {
       content: operation.content!,
       id: operation.id,
