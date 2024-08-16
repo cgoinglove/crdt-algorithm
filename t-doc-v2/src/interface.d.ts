@@ -1,9 +1,9 @@
-type ID = number;
+type ID = `${string}-${number}`;
 
-interface Node {
+interface Node<Item = string> {
   id: ID;
-  content: string;
-  next?: Node; // children
+  content: Item;
+  next?: Node;
 }
 
 interface Operation {
@@ -11,11 +11,9 @@ interface Operation {
   id: ID;
   parent?: ID;
   content?: string;
-  clock: number;
-  author: string;
 }
 
-interface CRDT {
+interface RGA {
   insert(content: string, parent?: ID): void;
   delete(id: ID): void;
   stringify(): string;

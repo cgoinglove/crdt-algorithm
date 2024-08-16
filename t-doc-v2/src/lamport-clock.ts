@@ -4,7 +4,7 @@ export class LamportClock {
     return ++this.time;
   }
   update(time: number): void {
-    this.time = Math.max(time, this.time) + 1;
+    this.time = Math.max(time, this.time);
   }
   getTime(): number {
     return this.time;

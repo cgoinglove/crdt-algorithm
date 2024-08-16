@@ -1,70 +1,24 @@
-import { autoIncrement } from '@repo/shared';
-
-const generateId: () => ID = autoIncrement;
-
-const generateClock: () => Operation['clock'] = autoIncrement;
+import { createId } from './id';
+import { LamportClock } from './lamport-clock';
+import { OperationToken } from './operation-token';
 
 export type CommitHandler<T = any> = (
-  operations: OperationToken[],
+  operations: Operation[],
   rollback: () => void,
 ) => T;
 
-export class OperationToken implements Operation {
-  private constructor(
-    public type: Operation['type'],
-    public id: Operation['id'],
-    public author: Operation['author'],
-    public clock: Operation['clock'],
-    public content?: Operation['content'],
-    public parent?: Operation['parent'],
-  ) {}
-
-  static ofInsert(operation: Pick<Operation, 'author' | 'content' | 'parent'>) {
-    return new OperationToken(
-      'insert',
-      generateId(),
-      operation.author,
-      generateClock(),
-      operation.content,
-      operation.parent,
-    );
-  }
-  static ofDelete(operation: Pick<Operation, 'author' | 'id'>) {
-    return new OperationToken(
-      'delete',
-      operation.id,
-      operation.author,
-      generateClock(),
-    );
-  }
-  static hash(token: Operation): string {
-    const args: any[] = [token.type, token.id, token.author, token.clock];
-    if (token.type == 'insert') args.push(token.content, token.parent);
-    return JSON.stringify(args);
-  }
-  static fromHash(hash: string): OperationToken {
-    const [type, id, author, clock, content, parent] = JSON.parse(hash);
-    switch (type as Operation['type']) {
-      case 'insert':
-        return new OperationToken(type, id, author, clock, content, parent);
-      case 'delete':
-        return new OperationToken(type, id, author, clock);
-      default:
-        throw new Error('TypeError');
-    }
-  }
-}
-
-export class DocumentOperator<T = OperationToken[]> implements CRDT {
-  private document: Node | undefined;
-  private pendingTokens: OperationToken[] = [];
+export class Doc<T = Operation[]> implements RGA {
+  private document: Node<string> | undefined;
+  private pendingTokens: Operation[];
   // for undo
-  private histories: OperationToken[] = [];
+  private histories: Operation[];
+  private logicalClock: LamportClock;
 
-  constructor(
-    private clientID: string,
-    private commitHandler?: CommitHandler<T>,
-  ) {}
+  constructor(private commitHandler?: CommitHandler<T>) {
+    this.pendingTokens = [];
+    this.histories = [];
+    this.logicalClock = new LamportClock();
+  }
 
   private getParent(id: ID): Node | undefined {
     if (this.document?.id == id) return undefined;
@@ -75,13 +29,12 @@ export class DocumentOperator<T = OperationToken[]> implements CRDT {
       current = current.next;
     }
   }
-
   private getNode(id: ID): Node | undefined {
     if (id == this.document?.id) return this.document;
     return this.getParent(id)?.next;
   }
 
-  private _insert(operation: OperationToken) {
+  private _insert(operation: Operation) {
     const parent = this.getParent(operation.id!);
     if (this.document && !parent) throw new Error('잘못된 경로');
 
@@ -103,7 +56,7 @@ export class DocumentOperator<T = OperationToken[]> implements CRDT {
     if (this.document == currentNode) this.document = undefined;
     else parent!.next = currentNode.next;
   }
-  private addToken(token: OperationToken) {
+  private addToken(token: Operation) {
     this.pendingTokens.push(token);
     // max histories 10;
     this.histories = [...this.histories.slice(0, 9), token];
@@ -119,7 +72,7 @@ export class DocumentOperator<T = OperationToken[]> implements CRDT {
   }
   insert(content: string, parent?: ID) {
     const token = OperationToken.ofInsert({
-      author: this.clientID,
+      id: createId(),
       content,
       parent,
     });
@@ -128,7 +81,6 @@ export class DocumentOperator<T = OperationToken[]> implements CRDT {
   }
   delete(id: ID) {
     const token = OperationToken.ofDelete({
-      author: this.clientID,
       id,
     });
     this._delete(token);
@@ -143,7 +95,7 @@ export class DocumentOperator<T = OperationToken[]> implements CRDT {
     }
     return result;
   }
-  merge(token: OperationToken | OperationToken[]): void {
+  merge(token: Operation | Operation[]): void {
     const tokens = [token].flat();
     tokens.forEach(op => {
       switch (op.type) {
