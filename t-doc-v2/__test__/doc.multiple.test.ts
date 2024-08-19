@@ -3,8 +3,8 @@ import { Doc } from '../src'; // 경로 수정
 
 describe('Doc merge 테스트', () => {
   it.only('두 피어가 동일 노드에 삽입할 경우 충돌 해결', () => {
-    const peer1 = new Doc('Lee');
-    const peer2 = new Doc('Choi');
+    const peer1 = new Doc('P1');
+    const peer2 = new Doc('P2');
 
     const root = peer1.insert('A');
 
@@ -12,17 +12,21 @@ describe('Doc merge 테스트', () => {
 
     expect(peer1.stringify()).toBe(peer2.stringify());
 
-    peer2.insert('C', root.id);
+    expect(peer1['document']).toEqual(peer2['document']);
+
     peer1.insert('B', root.id);
+    peer2.insert('C', root.id);
 
     expect(peer1.stringify()).toBe('AB');
     expect(peer2.stringify()).toBe('AC');
 
-    peer1.merge(peer2.commit()); // peer2가 peer1의 새로운 작업을 병합
-    peer2.merge(peer1.commit()); // peer2가 peer1의 새로운 작업을 병합
+    const c1 = peer1.commit();
+    const c2 = peer2.commit();
 
-    expect(peer1.stringify()).toBe(peer1.stringify());
+    peer1.merge(c2); // peer2가 peer1의 새로운 작업을 병합
     expect(peer1.stringify()).toBe('ABC');
+    peer2.merge(c1); // peer2가 peer1의 새로운 작업을 병합
+    expect(peer1.stringify()).toBe(peer2.stringify());
   });
 
   it('한 피어가 삭제한 후 다른 피어가 부모 노드에 삽입 시 충돌 처리', () => {

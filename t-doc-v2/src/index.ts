@@ -58,7 +58,6 @@ export class Doc<T = Operation[]> implements RGA {
     target.delete = true;
   }
   private addStage(token: Operation) {
-    /** 커밋되지 않은 중복된 operation 처리*/
     if (token.type == 'delete' && this.staging.insert.has(token.id)) {
       this.staging.insert.delete(token.id);
       const parent = this.findParentNode(token.id);
@@ -140,9 +139,10 @@ export class Doc<T = Operation[]> implements RGA {
         }
         case 'insert':
           {
+            console.log(insertConflictTokens);
             const conflict = insertConflictTokens[token.parent as ID];
             if (conflict) {
-              console.log({ conflict, token });
+              console.log(`${this.client} conflict 발생`, { conflict, token });
               token.parent = this.findParentNode(
                 conflict.find(compareToken.bind(null, token))!.id,
               )?.id;
