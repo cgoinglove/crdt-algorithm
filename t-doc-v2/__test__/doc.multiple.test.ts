@@ -2,22 +2,27 @@ import { describe, it, expect } from 'vitest';
 import { Doc } from '../src'; // 경로 수정
 
 describe('Doc merge 테스트', () => {
-  it('두 피어가 동일 노드에 삽입할 경우 충돌 해결', () => {
-    const peer1 = new Doc();
-    const peer2 = new Doc();
+  it.only('두 피어가 동일 노드에 삽입할 경우 충돌 해결', () => {
+    const peer1 = new Doc('Lee');
+    const peer2 = new Doc('Choi');
 
     const root = peer1.insert('A');
-    peer1.commit();
 
     peer2.merge(peer1.commit()); // peer2에 peer1의 작업 병합
 
-    const peer1Insert = peer1.insert('B', root.id);
-    const peer2Insert = peer2.insert('C', root.id);
+    expect(peer1.stringify()).toBe(peer2.stringify());
 
-    peer2.merge(peer1.commit()); // peer2가 peer1의 새로운 작업을 병합
+    peer2.insert('C', root.id);
+    peer1.insert('B', root.id);
 
     expect(peer1.stringify()).toBe('AB');
     expect(peer2.stringify()).toBe('AC');
+
+    peer1.merge(peer2.commit()); // peer2가 peer1의 새로운 작업을 병합
+    peer2.merge(peer1.commit()); // peer2가 peer1의 새로운 작업을 병합
+
+    expect(peer1.stringify()).toBe(peer1.stringify());
+    expect(peer1.stringify()).toBe('ABC');
   });
 
   it('한 피어가 삭제한 후 다른 피어가 부모 노드에 삽입 시 충돌 처리', () => {

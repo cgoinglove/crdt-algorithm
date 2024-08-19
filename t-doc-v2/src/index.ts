@@ -2,26 +2,32 @@ import { compareToken, createId, extractId, updateClock } from './id';
 
 import { OperationToken } from './operation-token';
 
-export type CommitHandler<T = any> = (
+export type preCommit<T = any> = (
   operations: Operation[],
   rollback: () => void,
 ) => T;
 
 export class Doc<T = Operation[]> implements RGA {
   private document: Node<string> | undefined;
-  private pendingTokens: Record<Operation['type'], Map<ID, Operation>>;
+  private staging: Record<Operation['type'], Map<ID, Operation>>;
   // for undo
   private histories: Operation[];
+  // for merge
+  private commitLogs: Operation[][];
 
-  constructor(private commitHandler?: CommitHandler<T>) {
-    this.pendingTokens = {
+  constructor(
+    public readonly client: string,
+    private preCommit?: preCommit<T>,
+  ) {
+    this.staging = {
       insert: new Map(),
       delete: new Map(),
     };
+    this.commitLogs = [];
     this.histories = [];
   }
 
-  private getParent(id: ID): Node | undefined {
+  private findParentNode(id: ID): Node | undefined {
     if (this.document?.id == id) return undefined;
     let current: Node | undefined = this.document;
     while (current?.next) {
@@ -30,13 +36,13 @@ export class Doc<T = Operation[]> implements RGA {
       current = current.next;
     }
   }
-  private getNode(id: ID): Node | undefined {
+  private findNode(id: ID): Node | undefined {
     if (id == this.document?.id) return this.document;
-    return this.getParent(id)?.next;
+    return this.findParentNode(id)?.next;
   }
 
-  private _insert(operation: Operation) {
-    const parent = this.getNode(operation.parent!);
+  private applyInsert(operation: Operation) {
+    const parent = this.findNode(operation.parent!);
     if (operation.parent && !parent) throw new Error('Not Found Parent');
     const newNode: Node = {
       content: operation.content!,
@@ -46,114 +52,102 @@ export class Doc<T = Operation[]> implements RGA {
     if (parent) parent.next = newNode;
     else this.document = newNode;
   }
-
-  private _delete(node: Operation): void {
-    const parent = this.getParent(node.id) || { next: this.document };
-    const currentNode = parent?.next;
-    if (!currentNode) return;
-    // is Root
-    if (this.document == currentNode) this.document = this.document.next;
-    else parent!.next = currentNode.next;
+  private applyDelete(operation: Operation): void {
+    const target = this.findNode(operation.id);
+    if (!target) throw new Error('Not Found Node');
+    target.delete = true;
   }
-  private addToken(token: Operation) {
-    if (token.type == 'delete' && this.pendingTokens.insert.has(token.id))
-      this.pendingTokens.insert.delete(token.id);
-    else this.pendingTokens[token.type].set(token.id, token);
-
+  private addStage(token: Operation) {
+    /** 커밋되지 않은 중복된 operation 처리*/
+    if (token.type == 'delete' && this.staging.insert.has(token.id)) {
+      this.staging.insert.delete(token.id);
+      const parent = this.findParentNode(token.id);
+      if (parent) parent.next = parent.next?.next;
+    } else this.staging[token.type].set(token.id, token);
     this.histories.push(token);
   }
-  undo() {
+  undo(depth: number = 1) {
     'undo';
   }
   commit(): T {
     const histories = this.histories.splice(-this.histories.length);
 
-    const insertTokens = Array.from(this.pendingTokens.insert.values());
-    this.pendingTokens.insert.clear();
-    const deleteTokens = Array.from(this.pendingTokens.delete.values());
-    this.pendingTokens.delete.clear();
+    const insertTokens = Array.from(this.staging.insert.values());
+    this.staging.insert.clear();
+    const deleteTokens = Array.from(this.staging.delete.values());
+    this.staging.delete.clear();
 
     const list = [...insertTokens, ...deleteTokens].sort(compareToken);
 
+    this.commitLogs.push(list);
+
     const rollback = () => {
-      insertTokens.forEach(token =>
-        this.pendingTokens.insert.set(token.id, token),
-      );
-      deleteTokens.forEach(token =>
-        this.pendingTokens.delete.set(token.id, token),
-      );
+      insertTokens.forEach(token => this.staging.insert.set(token.id, token));
+      deleteTokens.forEach(token => this.staging.delete.set(token.id, token));
       this.histories.unshift(...histories);
+      this.commitLogs = this.commitLogs.filter(commit => commit == list);
     };
 
-    if (this.commitHandler) return this.commitHandler(list, rollback);
+    if (this.preCommit) return this.preCommit(list, rollback);
     return list as T;
   }
   insert(content: string, parent?: ID): Operation {
     const token = OperationToken.ofInsert({
-      id: createId(),
+      id: createId(this.client),
       content,
       parent,
     });
-    this._insert(token);
-    this.addToken(token);
+    this.applyInsert(token);
+    this.addStage(token);
     return token;
   }
   delete(id: ID): Operation {
     const token = OperationToken.ofDelete({
       id,
     });
-    this._delete(token);
-    this.addToken(token);
+    this.applyDelete(token);
+    this.addStage(token);
     return token;
   }
   stringify(): string {
     let node = this.document;
     let result = '';
     while (node) {
-      result += node.content;
+      if (!node.delete) result += node.content;
       node = node.next;
     }
     return result;
   }
 
-  private resolveConflicts(tokens: Operation[]): Operation[] {
-    const mergeDeleteToken = new Map<ID, Operation>();
-    this.pendingTokens.delete.entries().forEach(([key, value]) => {
-      mergeDeleteToken.set(key, value);
-    });
-
-    tokens.forEach(token => {
-      if (token.type == 'delete') mergeDeleteToken.set(token.id, token);
-    });
-
+  private conflictResolution(tokens: Operation[]): Operation[] {
+    const insertConflictTokens = this.commitLogs
+      .flat()
+      .reduce<{ [parentId: ID]: Operation[] }>((prev, node) => {
+        const parent = node.parent;
+        prev[parent as ID] ??= [];
+        prev[parent as ID].push(node);
+        return prev;
+      }, {});
     return tokens.filter(token => {
       switch (token.type) {
         case 'delete': {
-          const duplicateOperation = this.pendingTokens.delete.has(token.id);
+          const duplicateOperation = this.staging.delete.has(token.id);
           if (duplicateOperation) {
-            this.pendingTokens.delete.delete(token.id);
+            this.staging.delete.delete(token.id);
             return false;
           }
           break;
         }
         case 'insert':
           {
-            while (mergeDeleteToken.has(token.parent!)) {
-              token.parent = mergeDeleteToken.get(token.parent!)?.parent;
+            const conflict = insertConflictTokens[token.parent as ID];
+            if (conflict) {
+              console.log({ conflict, token });
+              token.parent = this.findParentNode(
+                conflict.find(compareToken.bind(null, token))!.id,
+              )?.id;
+              console.log(token.parent, 'token.parent');
             }
-
-            const duplicateParentOperation = Array.from(
-              this.pendingTokens.insert.values(),
-            )
-              .filter(pt => {
-                pt.parent == token.parent;
-              })
-              .sort(compareToken);
-
-            if (duplicateParentOperation.length)
-              token.parent = duplicateParentOperation.find(pt =>
-                compareToken(pt, token),
-              )?.parent;
           }
           break;
       }
@@ -164,20 +158,22 @@ export class Doc<T = Operation[]> implements RGA {
 
   merge(token: Operation | Operation[]): void {
     const tokens = [token].flat().sort(compareToken);
+    if (!tokens.length) return;
 
     const lastClock = extractId(tokens.at(-1)!.id).clock;
     updateClock(lastClock);
 
-    const resolveTokens = this.resolveConflicts(tokens);
+    const resolveTokens = this.conflictResolution(tokens);
     resolveTokens.forEach(op => {
       switch (op.type) {
         case 'delete':
-          this._delete(op);
+          this.applyDelete(op);
           break;
         case 'insert':
-          this._insert(op);
+          this.applyInsert(op);
           break;
       }
     });
+    this.commitLogs = [];
   }
 }

@@ -9,19 +9,19 @@ vi.mock('@repo/shared', () => ({
 describe('ID Generation and Handling', () => {
   it('createId는 랜덤 ID와 LamportClock의 값을 결합한 문자열을 생성해야 한다', () => {
     const clock = new LamportClock();
-    const id = createId();
+    const id = createId('client');
 
-    const [nodeId, clockValue] = id.split('-');
-    expect(nodeId).toBe('1'); // autoIncrement 모킹 값
+    const [client, clockValue] = id.split('-');
+    expect(client).toBe('client');
     expect(+clockValue).toBe(clock.tick()); // LamportClock의 tick 값
   });
 
   it('extractId는 nodeId와 clock을 분리하여 반환해야 한다', () => {
-    const id = 'node-123';
+    const id = 'client-123';
     const result = extractId(id);
 
     expect(result).toEqual({
-      nodeId: 'node',
+      client: 'client',
       clock: 123,
     });
   });
