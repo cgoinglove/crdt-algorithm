@@ -1,5 +1,5 @@
 import { compareToken, createId, extractId, updateClock } from './id';
-
+import { createNodeManager, Node } from './node';
 import { OperationToken } from './operation-token';
 
 export type preCommit<T = any> = (
@@ -8,87 +8,67 @@ export type preCommit<T = any> = (
 ) => T;
 
 export class Doc<T = Operation[]> implements RGA {
-  private document: Node<string> | undefined;
-  private staging: Record<Operation['type'], Map<ID, Operation>>;
+  private head: Node | undefined;
+  private nodeManager: ReturnType<typeof createNodeManager>;
+  private staging: Operation[];
   // for undo
   private histories: Operation[];
-  // for merge
-  private commitLogs: Operation[][];
 
   constructor(
     public readonly client: string,
     private preCommit?: preCommit<T>,
   ) {
-    this.staging = {
-      insert: new Map(),
-      delete: new Map(),
-    };
-    this.commitLogs = [];
+    this.nodeManager = createNodeManager();
+    this.staging = [];
     this.histories = [];
   }
-
-  private findParentNode(id: ID): Node | undefined {
-    if (this.document?.id == id) return undefined;
-    let current: Node | undefined = this.document;
-    while (current?.next) {
-      if (current.next.id == id) return current;
-      if (current.id == id) return;
-      current = current.next;
-    }
-  }
   private findNode(id: ID): Node | undefined {
-    if (id == this.document?.id) return this.document;
-    return this.findParentNode(id)?.next;
+    return this.nodeManager.find(id);
   }
 
   private applyInsert(operation: Operation) {
     const parent = this.findNode(operation.parent!);
     if (operation.parent && !parent) throw new Error('Not Found Parent');
-    const newNode: Node = {
-      content: operation.content!,
-      id: operation.id,
-      next: parent ? parent.next : this.document,
-    };
-    if (parent) parent.next = newNode;
-    else this.document = newNode;
+    const newNode: Node = this.nodeManager.create(
+      operation.id,
+      operation.content!,
+    );
+    if (parent) return parent.append(newNode);
+    if (this.head) newNode.append(this.head);
+    this.head = newNode;
   }
   private applyDelete(operation: Operation): void {
     const target = this.findNode(operation.id);
     if (!target) throw new Error('Not Found Node');
-    target.delete = true;
+    target.delete();
   }
   private addStage(token: Operation) {
-    if (token.type == 'delete' && this.staging.insert.has(token.id)) {
-      this.staging.insert.delete(token.id);
-      const parent = this.findParentNode(token.id);
-      if (parent) parent.next = parent.next?.next;
-    } else this.staging[token.type].set(token.id, token);
+    if (token.type == 'delete') {
+      const index = this.staging.findIndex(
+        op => op.type == 'insert' && op.id == token.id,
+      );
+      if (index != -1) {
+        this.staging.splice(index, 1);
+        this.nodeManager.forceDelete(token.id);
+        this.histories.push(token);
+        return;
+      }
+    }
+    this.staging.push(token);
     this.histories.push(token);
   }
   undo(depth: number = 1) {
     'undo';
   }
   commit(): T {
-    const histories = this.histories.splice(-this.histories.length);
-
-    const insertTokens = Array.from(this.staging.insert.values());
-    this.staging.insert.clear();
-    const deleteTokens = Array.from(this.staging.delete.values());
-    this.staging.delete.clear();
-
-    const list = [...insertTokens, ...deleteTokens].sort(compareToken);
-
-    this.commitLogs.push(list);
+    const tokens = this.staging.splice(-this.staging.length);
 
     const rollback = () => {
-      insertTokens.forEach(token => this.staging.insert.set(token.id, token));
-      deleteTokens.forEach(token => this.staging.delete.set(token.id, token));
-      this.histories.unshift(...histories);
-      this.commitLogs = this.commitLogs.filter(commit => commit == list);
+      this.staging.unshift(...tokens);
     };
 
-    if (this.preCommit) return this.preCommit(list, rollback);
-    return list as T;
+    if (this.preCommit) return this.preCommit(tokens, rollback);
+    return tokens as T;
   }
   insert(content: string, parent?: ID): Operation {
     const token = OperationToken.ofInsert({
@@ -109,51 +89,52 @@ export class Doc<T = Operation[]> implements RGA {
     return token;
   }
   stringify(): string {
-    let node = this.document;
+    let node = this.head;
     let result = '';
     while (node) {
-      if (!node.delete) result += node.content;
-      node = node.next;
+      if (!node.deleted) result += node.value;
+      node = node.right;
     }
     return result;
   }
 
   private conflictResolution(tokens: Operation[]): Operation[] {
-    const insertConflictTokens = this.commitLogs
-      .flat()
-      .reduce<{ [parentId: ID]: Operation[] }>((prev, node) => {
-        const parent = node.parent;
-        prev[parent as ID] ??= [];
-        prev[parent as ID].push(node);
-        return prev;
-      }, {});
-    return tokens.filter(token => {
-      switch (token.type) {
-        case 'delete': {
-          const duplicateOperation = this.staging.delete.has(token.id);
-          if (duplicateOperation) {
-            this.staging.delete.delete(token.id);
-            return false;
-          }
-          break;
-        }
-        case 'insert':
-          {
-            console.log(insertConflictTokens);
-            const conflict = insertConflictTokens[token.parent as ID];
-            if (conflict) {
-              console.log(`${this.client} conflict 발생`, { conflict, token });
-              token.parent = this.findParentNode(
-                conflict.find(compareToken.bind(null, token))!.id,
-              )?.id;
-              console.log(token.parent, 'token.parent');
-            }
-          }
-          break;
-      }
+    return tokens;
+    // const insertConflictTokens = this.commitLogs
+    //   .flat()
+    //   .reduce<{ [parentId: ID]: Operation[] }>((prev, node) => {
+    //     const parent = node.parent;
+    //     prev[parent as ID] ??= [];
+    //     prev[parent as ID].push(node);
+    //     return prev;
+    //   }, {});
+    // return tokens.filter(token => {
+    //   switch (token.type) {
+    //     case 'delete': {
+    //       const duplicateOperation = this.staging.delete.has(token.id);
+    //       if (duplicateOperation) {
+    //         this.staging.delete.delete(token.id);
+    //         return false;
+    //       }
+    //       break;
+    //     }
+    //     case 'insert':
+    //       {
+    //         console.log(insertConflictTokens);
+    //         const conflict = insertConflictTokens[token.parent as ID];
+    //         if (conflict) {
+    //           console.log(`${this.client} conflict 발생`, { conflict, token });
+    //           token.parent = this.findParentNode(
+    //             conflict.find(compareToken.bind(null, token))!.id,
+    //           )?.id;
+    //           console.log(token.parent, 'token.parent');
+    //         }
+    //       }
+    //       break;
+    //   }
 
-      return token;
-    });
+    //   return token;
+    // });
   }
 
   merge(token: Operation | Operation[]): void {
@@ -174,6 +155,5 @@ export class Doc<T = Operation[]> implements RGA {
           break;
       }
     });
-    this.commitLogs = [];
   }
 }

@@ -1,12 +1,5 @@
 type ID = `${string}-${number}`;
 
-interface Node<Item = string> {
-  id: ID;
-  content: Item;
-  next?: Node;
-  delete?: boolean;
-}
-
 interface Operation {
   type: 'insert' | 'delete';
   id: ID;
