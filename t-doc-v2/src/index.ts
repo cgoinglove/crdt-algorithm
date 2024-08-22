@@ -7,12 +7,18 @@ export type preCommit<T = any> = (
   rollback: () => void,
 ) => T;
 
+type ParentID = ID;
 export class Doc<T = Operation[]> implements RGA {
   private head: Node | undefined;
   private nodeManager: ReturnType<typeof createNodeManager>;
   private staging: Operation[];
+  private commitLogs: {
+    delete: Map<ID, Operation>;
+    insert: Map<ParentID, Map<ID, Operation>>;
+  };
   // for undo
   private histories: Operation[];
+  // logs
 
   constructor(
     public readonly client: string,
@@ -21,6 +27,10 @@ export class Doc<T = Operation[]> implements RGA {
     this.nodeManager = createNodeManager();
     this.staging = [];
     this.histories = [];
+    this.commitLogs = {
+      delete: new Map(),
+      insert: new Map(),
+    };
   }
   private findNode(id: ID): Node | undefined {
     return this.nodeManager.find(id);
@@ -55,13 +65,29 @@ export class Doc<T = Operation[]> implements RGA {
       }
     }
     this.staging.push(token);
-    this.histories.push(token);
+    this.histories = [...this.histories, token].slice(0, 10);
   }
   undo(depth: number = 1) {
-    'undo';
+    this.histories
+      .splice(this.histories.length - depth, depth)
+      .reverse()
+      .forEach(this.roleback);
   }
+  roleback(token: Operation) {}
   commit(): T {
     const tokens = this.staging.splice(-this.staging.length);
+    tokens.forEach(token => {
+      switch (token.type) {
+        case 'delete':
+          this.commitLogs.delete.set(token.id, token);
+        case 'insert': {
+          if (!this.commitLogs.insert.has(token.parent as ID)) {
+            this.commitLogs.insert.set(token.parent as ID, new Map());
+          }
+          this.commitLogs.insert.get(token.parent as ID)?.set(token.id, token);
+        }
+      }
+    });
 
     const rollback = () => {
       this.staging.unshift(...tokens);
@@ -100,41 +126,6 @@ export class Doc<T = Operation[]> implements RGA {
 
   private conflictResolution(tokens: Operation[]): Operation[] {
     return tokens;
-    // const insertConflictTokens = this.commitLogs
-    //   .flat()
-    //   .reduce<{ [parentId: ID]: Operation[] }>((prev, node) => {
-    //     const parent = node.parent;
-    //     prev[parent as ID] ??= [];
-    //     prev[parent as ID].push(node);
-    //     return prev;
-    //   }, {});
-    // return tokens.filter(token => {
-    //   switch (token.type) {
-    //     case 'delete': {
-    //       const duplicateOperation = this.staging.delete.has(token.id);
-    //       if (duplicateOperation) {
-    //         this.staging.delete.delete(token.id);
-    //         return false;
-    //       }
-    //       break;
-    //     }
-    //     case 'insert':
-    //       {
-    //         console.log(insertConflictTokens);
-    //         const conflict = insertConflictTokens[token.parent as ID];
-    //         if (conflict) {
-    //           console.log(`${this.client} conflict 발생`, { conflict, token });
-    //           token.parent = this.findParentNode(
-    //             conflict.find(compareToken.bind(null, token))!.id,
-    //           )?.id;
-    //           console.log(token.parent, 'token.parent');
-    //         }
-    //       }
-    //       break;
-    //   }
-
-    //   return token;
-    // });
   }
 
   merge(token: Operation | Operation[]): void {
