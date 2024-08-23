@@ -10,13 +10,16 @@ describe('RGA CRDT - Multiple Peers with a Server', () => {
     insert: new Map<ID, Operation>(),
     delete: new Map<ID, Operation>(),
   };
+  let version = 0;
 
   beforeEach(() => {
+    version = 0;
     const setupPeer = (id: string) => {
       return new Doc(id, _operations => {
         const operations = _operations.map(OperationToken.copy);
 
         [p1, p2, p3].forEach(peer => {
+          console.log(`COMMIT VERSION ${version++}`);
           if (peer.client == id) return;
           try {
             peer.merge(operations);
