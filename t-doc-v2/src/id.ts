@@ -30,7 +30,6 @@ export const compareId = (a: ID, b: ID): 1 | -1 => {
   if (aClock < bClock) return -1;
   if (aClient > bClient) return 1;
   if (aClient < bClient) return -1;
-
   throw new Error('Duplicate ID');
 };
 

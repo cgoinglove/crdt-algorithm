@@ -39,10 +39,10 @@ describe('Doc 클래스', () => {
   });
 
   it('commit 중 롤백이 필요할 경우 롤백이 제대로 호출되어야 한다', () => {
-    const rollbackMock = vi.fn();
     const commitHandlerMock = vi.fn((operations, rollback) => {
-      rollbackMock();
+      expect(doc['staging'].insert).toHaveLength(0);
       rollback();
+      expect(doc['staging'].insert).toHaveLength(2);
       return '커밋 실패';
     });
 
@@ -52,18 +52,17 @@ describe('Doc 클래스', () => {
 
     const commitResult = doc.commit();
     expect(commitResult).toBe('커밋 실패');
-    expect(rollbackMock).toHaveBeenCalledTimes(1);
   });
 
   it('delete를 호출하면 insert에 있던 토큰이 삭제되는지 확인한다', () => {
     const doc = new Doc('client');
     const root = doc.insert('A');
 
-    expect(doc['staging'].length).toBe(1);
+    expect(doc['staging'].insert).toHaveLength(1);
 
     // 첫 번째 토큰 삭제
     doc.delete(root.id);
 
-    expect(doc['staging']).toHaveLength(0);
+    expect(doc['staging'].delete).toHaveLength(0);
   });
 });

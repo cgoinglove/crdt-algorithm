@@ -22,11 +22,14 @@ export class OperationToken implements Operation {
     if (token.type == 'insert') args.push(token.parent, token.content);
     return JSON.stringify(args);
   }
+  static copy(token: Operation): Operation {
+    return OperationToken.fromHash(OperationToken.hash(token));
+  }
   static fromHash(hash: string): OperationToken {
     const [type, id, parent, content] = JSON.parse(hash);
     switch (type as Operation['type']) {
       case 'insert':
-        return new OperationToken(type, id, parent, content);
+        return new OperationToken(type, id, parent ?? undefined, content);
       case 'delete':
         return new OperationToken(type, id);
       default:

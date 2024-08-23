@@ -1,115 +1,74 @@
-import { describe, it, expect } from 'vitest';
-import { Doc } from '../src'; // 경로 수정
+import { describe, it, expect, beforeEach } from 'vitest';
+import { CommitHandler, Doc } from '../src';
+import { OperationToken } from '../src/operation-token';
 
-describe.skip('Doc merge 테스트', () => {
-  it.only('두 피어가 동일 노드에 삽입할 경우 충돌 해결', () => {
-    const peer1 = new Doc('P1');
-    const peer2 = new Doc('P2');
+describe('RGA CRDT - Multiple Peers with a Server', () => {
+  let p1: Doc<any>;
+  let p2: Doc<any>;
+  let p3: Doc<any>;
+  const server = {
+    insert: new Map<ID, Operation>(),
+    delete: new Map<ID, Operation>(),
+  };
 
-    const root = peer1.insert('A');
+  beforeEach(() => {
+    const setupPeer = (id: string) => {
+      return new Doc(id, _operations => {
+        const operations = _operations.map(OperationToken.copy);
 
-    peer2.merge(peer1.commit()); // peer2에 peer1의 작업 병합
+        [p1, p2, p3].forEach(peer => {
+          if (peer.client == id) return;
+          try {
+            peer.merge(operations);
+          } catch (error) {
+            console.log({
+              error,
+              peer: peer.client,
+              sender: id,
+            });
+            throw error;
+          }
+        });
+        operations.forEach(op => {
+          server[op.type].set(op.id, op);
+        });
+        return;
+      });
+    };
 
-    expect(peer1.stringify()).toBe(peer2.stringify());
-
-    expect(peer1['document']).toEqual(peer2['document']);
-
-    peer1.insert('B', root.id);
-    peer2.insert('C', root.id);
-
-    expect(peer1.stringify()).toBe('AB');
-    expect(peer2.stringify()).toBe('AC');
-
-    const c1 = peer1.commit();
-    const c2 = peer2.commit();
-
-    peer1.merge(c2); // peer2가 peer1의 새로운 작업을 병합
-    expect(peer1.stringify()).toBe('ABC');
-    peer2.merge(c1); // peer2가 peer1의 새로운 작업을 병합
-    expect(peer1.stringify()).toBe(peer2.stringify());
+    p1 = setupPeer('p1');
+    p2 = setupPeer('p2');
+    p3 = setupPeer('p3');
   });
 
-  it('한 피어가 삭제한 후 다른 피어가 부모 노드에 삽입 시 충돌 처리', () => {
-    const peer1 = new Doc();
-    const peer2 = new Doc();
-
-    const root = peer1.insert('A');
-    peer1.commit();
-
-    peer2.merge(peer1.commit()); // peer2에 peer1의 작업 병합
-
-    // peer1에서 노드 삭제
-    peer1.delete(root.id);
-    const peer1Delete = peer1.commit();
-
-    // peer2에서 삭제된 부모 앞에 삽입 시도
-    const peer2Insert = peer2.insert('B', root.id);
-
-    peer2.merge(peer1Delete); // peer2에 peer1의 삭제 병합
-
-    expect(peer1.stringify()).toBe('');
-    expect(peer2.stringify()).toBe('B'); // peer2는 'B' 삽입을 유지
+  it('should synchronize all peers with consistent state', () => {
+    p1.insert('A');
+    p1.commit();
+    p2.insert('B');
+    p2.commit();
+    p3.insert('C');
+    p3.commit();
+    expect(p1.stringify()).toEqual('CBA');
+    expect(p1.stringify()).toEqual(p2.stringify());
+    expect(p2.stringify()).toEqual(p3.stringify());
+    expect(server.insert.size).toBe(3);
   });
 
-  it('동일한 부모 노드 앞에 두 피어가 동시에 삽입할 때 충돌 해결', () => {
-    const peer1 = new Doc();
-    const peer2 = new Doc();
+  it.only('should handle duplicate tokens and still have consistent state', () => {
+    p1.insert('X');
+    p2.insert('Y');
+    p3.insert('Z');
 
-    const root = peer1.insert('A');
-    peer1.commit();
+    p1.commit();
+    p2.commit();
+    p3.commit();
+    console.log(p1.stringify());
+    console.log(p2.stringify());
+    console.log(p3.stringify());
 
-    peer2.merge(peer1.commit());
+    expect(p1.stringify()).toEqual(p2.stringify());
+    expect(p2.stringify()).toEqual(p3.stringify());
 
-    // 동일한 부모 앞에 두 피어가 동시에 삽입
-    const peer1Insert = peer1.insert('B', root.id);
-    const peer2Insert = peer2.insert('C', root.id);
-
-    peer2.merge(peer1.commit()); // peer2가 peer1의 삽입을 병합
-
-    expect(peer1.stringify()).toBe('AB');
-    expect(peer2.stringify()).toBe('AC');
-  });
-
-  it('readonlyPeer가 두 피어의 병합을 정상적으로 수행하는지 확인', () => {
-    const peer1 = new Doc();
-    const peer2 = new Doc();
-    const readonlyPeer = new Doc();
-
-    const root = peer1.insert('A');
-    peer1.commit();
-
-    peer2.merge(peer1.commit()); // peer2에 peer1의 작업 병합
-
-    const peer1Insert = peer1.insert('B', root.id);
-    const peer2Insert = peer2.insert('C', root.id);
-
-    readonlyPeer.merge(peer1.commit()); // readonlyPeer에 peer1의 작업 병합
-    readonlyPeer.merge(peer2.commit()); // readonlyPeer에 peer2의 작업 병합
-
-    expect(readonlyPeer.stringify()).toBe('AC'); // peer2의 삽입이 마지막으로 병합됨
-  });
-
-  it('중복된 부모를 기준으로 두 피어가 동시에 삽입하는 경우 처리', () => {
-    const peer1 = new Doc();
-    const peer2 = new Doc();
-
-    const root = peer1.insert('A');
-    peer1.commit();
-
-    peer2.merge(peer1.commit());
-
-    // 동일한 부모 앞에 두 피어가 중복 삽입
-    const peer1Insert = peer1.insert('B', root.id);
-    const peer2Insert = peer2.insert('C', root.id);
-
-    peer2.merge(peer1.commit()); // peer2가 peer1의 작업을 병합
-
-    const finalMerge = peer1.commit(); // 최종 병합
-
-    expect(peer1.stringify()).toBe('AB');
-    expect(peer2.stringify()).toBe('AC');
-
-    peer1.merge(finalMerge); // peer1이 peer2의 삽입을 병합
-    expect(peer1.stringify()).toBe('AC'); // 최종적으로 동일한 결과가 나와야 함
+    expect(server.insert.size).toBe(3);
   });
 });
