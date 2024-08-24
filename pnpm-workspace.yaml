@@ -1,5 +1,4 @@
 packages:
   - 'apps/*'
   - 'packages/*'
-  - 't-doc'
-  - 't-doc-v2'
+  - 'rga'

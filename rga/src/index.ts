@@ -152,60 +152,44 @@ export class Doc<T = OperationToken[]> implements RGA {
     return result;
   }
   private conflictResolution(tokens: Operation[]): Operation[] {
-    let resolve: Operation[] = [];
     const staged = [
       ...Array.from(this.staging.insert.values()),
       ...Array.from(this.staging.delete.values()),
     ];
     this.addLog(staged);
 
-    console.log({
-      peer: this.client,
-      tokens,
-      deleteLogs: Array.from(this.logs.delete.values())
-        .map(OperationToken.hash)
-        .join('\n'),
-      insertLogs: Array.from(this.logs.insert.entries()).map(
-        ([parent, tokens]) => {
-          return {
-            parent,
-            tokens: Array.from(tokens.values())
-              .map(OperationToken.hash)
-              .join('\n'),
-          };
-        },
-      ),
-    });
-
     try {
-      tokens.forEach(token => {
-        this.addLog(OperationToken.copy(token));
-        switch (token.type) {
-          case 'delete':
-            {
-              if (this.staging.delete.has(token.id))
-                this.staging.delete.delete(token.id);
-            }
-            break;
-          case 'insert':
-            {
-              const duplicateTokens = Array.from(
-                this.logs.insert.get(token.parent as ID)?.values() ?? [],
-              ).sort(compareToken);
-              if (duplicateTokens.length) {
-                token.parent =
-                  duplicateTokens.find(op => compareToken(op, token) == 1)
-                    ?.id || token.parent;
+      return tokens
+        .map(token => {
+          const resolveToken = OperationToken.copy(token);
+          switch (token.type) {
+            case 'delete':
+              {
+                if (this.logs.delete.has(token.id)) {
+                  this.staging.delete.delete(token.id);
+                  return false;
+                }
               }
-            }
-            break;
-        }
-
-        resolve.push(token);
-      });
-      return resolve;
+              break;
+            case 'insert':
+              {
+                const duplicateTokens = Array.from(
+                  this.logs.insert.get(token.parent as ID)?.values() ?? [],
+                ).sort(compareToken);
+                if (duplicateTokens.length) {
+                  resolveToken.parent =
+                    duplicateTokens.find(op => compareToken(op, token) == 1)
+                      ?.id || resolveToken.parent;
+                }
+              }
+              break;
+          }
+          this.addLog(token);
+          return resolveToken;
+        })
+        .filter(Boolean) as Operation[];
     } catch (error) {
-      this.deleteLog(resolve);
+      this.deleteLog(tokens);
       throw error;
     } finally {
       this.deleteLog(staged);
