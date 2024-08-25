@@ -1,13 +1,13 @@
-type ID = `${string}-${number}`;
+export type ID = `${string}-${number}`;
 
-interface Operation {
+export interface Operation {
   type: 'insert' | 'delete';
   id: ID;
   parent?: ID;
   content?: string;
 }
 
-interface RGA {
+export interface RGA {
   insert(content: string, parent?: ID): void;
   delete(id: ID): void;
   stringify(): string;

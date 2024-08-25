@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createId, extractId, compareId } from '../src/id';
 import { LamportClock } from '../src/lamport-clock';
+import { ID } from '../src/interface';
 
 vi.mock('@repo/shared', () => ({
   autoIncrement: vi.fn().mockReturnValue(1),

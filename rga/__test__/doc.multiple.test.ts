@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Doc } from '../src';
+import { Doc } from '../src/rga';
 import { OperationToken } from '../src/operation-token';
+import { ID, Operation } from '../src/interface';
 
 describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () => {
   let p1: Doc<any>;
@@ -17,16 +18,7 @@ describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () =>
       version++;
       [p1, p2, p3, peer].forEach(peer => {
         if (peer.client == id) return;
-        try {
-          peer.merge(operations);
-        } catch (error) {
-          console.log({
-            error,
-            peer: peer.client,
-            sender: id,
-          });
-          throw error;
-        }
+        peer.merge(operations);
       });
       operations.forEach(op => {
         server[op.type].set(op.id, op);

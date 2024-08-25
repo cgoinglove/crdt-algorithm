@@ -1,3 +1,5 @@
+import { Operation } from './interface';
+
 export class OperationToken implements Operation {
   private constructor(
     public type: Operation['type'],

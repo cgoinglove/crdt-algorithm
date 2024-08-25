@@ -1,3 +1,4 @@
+import { ID, Operation } from './interface';
 import { LamportClock } from './lamport-clock';
 
 const logicalClock = new LamportClock();

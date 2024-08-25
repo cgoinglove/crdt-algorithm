@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { OperationToken } from '../src/operation-token';
+import { Operation } from '../src/interface';
 
 describe('OperationToken', () => {
   it('ofInsert를 사용하여 insert 작업을 생성해야 한다', () => {

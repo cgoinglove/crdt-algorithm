@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Doc } from '../src';
+import { Doc } from '../src/rga';
 
 // Mocking autoIncrement and LamportClock
 
