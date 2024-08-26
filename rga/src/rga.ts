@@ -48,7 +48,9 @@ export class Doc<T = OperationToken[]> implements RGA {
   private applyInsert(operation: Operation) {
     const parent = this.findNode(operation.parent!);
     if (operation.parent && !parent)
-      throw new Error(`${this.client} Not Found Parent`);
+      throw new Error(
+        `[${this.client}] Not Found Parent ${OperationToken.hash(operation)}`,
+      );
     const newNode: Node = this.nodeManager.create(
       operation.id,
       operation.content!,
@@ -156,67 +158,73 @@ export class Doc<T = OperationToken[]> implements RGA {
     }
     return result;
   }
-  private conflictResolution(tokens: Operation[]): Operation[] {
+  private conflictResolution(token: Operation): Operation | undefined {
+    const resolveToken = OperationToken.copy(token);
+    switch (token.type) {
+      case 'delete':
+        {
+          if (this.logs.delete.has(token.id)) {
+            this.staging.delete.delete(token.id);
+            return;
+          }
+          if (!this.findNode(token.id)) {
+            this.buffer.push(token);
+            return;
+          }
+        }
+        break;
+      case 'insert':
+        {
+          const duplicateTokens = Array.from(
+            this.logs.insert.get(token.parent as ID)?.values() ?? [],
+          ).sort(compareToken);
+          if (duplicateTokens.length) {
+            resolveToken.parent =
+              duplicateTokens.find(op => compareToken(op, token) == 1)?.id ||
+              resolveToken.parent;
+          }
+          if (token.parent && !this.findNode(token.parent)) {
+            this.buffer.push(token);
+            return;
+          }
+        }
+        break;
+    }
+    return resolveToken;
+  }
+  merge(token: Operation | Operation[]): void {
+    const tokens = [token].flat().sort(compareToken);
+    if (!tokens.length) return;
+
+    const lastClock = extractId(tokens.at(-1)!.id).clock;
+    updateClock(lastClock);
+
     const staged = [
       ...Array.from(this.staging.insert.values()),
       ...Array.from(this.staging.delete.values()),
     ];
     this.addLog(staged);
 
+    const buffer = this.buffer.splice(-this.buffer.length);
     try {
-      return tokens
-        .map(token => {
-          const resolveToken = OperationToken.copy(token);
-          switch (token.type) {
-            case 'delete':
-              {
-                if (this.logs.delete.has(token.id)) {
-                  this.staging.delete.delete(token.id);
-                  return false;
-                }
-              }
-              break;
-            case 'insert':
-              {
-                const duplicateTokens = Array.from(
-                  this.logs.insert.get(token.parent as ID)?.values() ?? [],
-                ).sort(compareToken);
-                if (duplicateTokens.length) {
-                  resolveToken.parent =
-                    duplicateTokens.find(op => compareToken(op, token) == 1)
-                      ?.id || resolveToken.parent;
-                }
-              }
-              break;
-          }
-          this.addLog(token);
-          return resolveToken;
-        })
-        .filter(Boolean) as Operation[];
+      [...tokens, ...buffer].forEach(op => {
+        const resolve = this.conflictResolution(op);
+        switch (resolve.type) {
+          case 'delete':
+            this.applyDelete(resolve);
+            break;
+          case 'insert':
+            this.applyInsert(resolve);
+            break;
+        }
+        this.addLog(op);
+      });
     } catch (error) {
+      this.buffer = buffer;
       this.deleteLog(tokens);
       throw error;
     } finally {
       this.deleteLog(staged);
     }
-  }
-  merge(token: Operation | Operation[]): void {
-    const tokens = [token].flat().sort(compareToken);
-    if (!tokens.length) return;
-    const lastClock = extractId(tokens.at(-1)!.id).clock;
-    updateClock(lastClock);
-
-    const resolveTokens = this.conflictResolution(tokens);
-
-    resolveTokens.forEach(op => {
-      switch (op.type) {
-        case 'delete':
-          this.applyDelete(op);
-          break;
-        case 'insert':
-          this.applyInsert(op);
-          break;
-      }
-    });
   }
 }
