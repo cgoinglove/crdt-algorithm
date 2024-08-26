@@ -10,7 +10,7 @@ export type CommitHandler<T = any> = (
 
 type ParentID = ID;
 export class Doc<T = OperationToken[]> implements RGA {
-  private head: Node | undefined;
+   head: Node | undefined;
   private nodeManager: ReturnType<typeof createNodeManager>;
 
   private buffer: Operation[];
@@ -42,6 +42,8 @@ export class Doc<T = OperationToken[]> implements RGA {
       insert: new Map(),
     };
   }
+  
+
   private findNode(id: ID): Node | undefined {
     return this.nodeManager.find(id);
   }
@@ -209,6 +211,7 @@ export class Doc<T = OperationToken[]> implements RGA {
     try {
       [...tokens, ...buffer].forEach(op => {
         const resolve = this.conflictResolution(op);
+        if (!resolve) return;
         switch (resolve.type) {
           case 'delete':
             this.applyDelete(resolve);

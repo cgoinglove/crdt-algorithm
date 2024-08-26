@@ -23,7 +23,7 @@ describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () =>
       operations.forEach(op => {
         server[op.type].set(op.id, op);
       });
-      return version;
+      return { version, operations };
     });
 
     return peer;
@@ -138,11 +138,11 @@ describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () =>
   });
   it('다양한 부모에 데이터를 삽입하여 Hello World를 만들어야 합니다', () => {
     const helToken1 = p1.insert('H');
-    console.log({ helToken1 });
+
     const helToken2 = p1.insert('e', helToken1.id);
-    console.log({ helToken2 });
+
     const helToken3 = p1.insert('l', helToken2.id);
-    console.log({ helToken3 });
+
     p1.commit();
 
     const loToken1 = p2.insert('l', helToken3.id);
@@ -193,5 +193,34 @@ describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () =>
     expect(result.includes('E')).toBeTruthy();
     expect(result.includes('l')).toBeTruthy();
     expect(server.insert.size).toBe(4);
+  });
+
+  it('커밋의 순서가 잘못 들어 왔을 경우에도 버퍼를 통해 커밋들을 lazy 하게 merge 할 수 있도록 한다', () => {
+    const A = p1.insert('A');
+    const B = p1.insert('B', A.id);
+    const C = p1.insert('C', B.id);
+
+    const { operations: ABC_OPERATIONS } = p1.commit();
+
+    const D = p2.insert('D', C.id);
+    const E = p2.insert('E', D.id);
+    const F = p2.insert('F', E.id);
+
+    const { operations: DEF_OPERATIONS } = p2.commit();
+
+    expect(p1.stringify()).toBe('ABCDEF');
+
+    const testPeer1 = setupPeer('test-1');
+    const testPeer2 = setupPeer('test-2');
+
+    testPeer1.merge(ABC_OPERATIONS);
+    testPeer1.merge(DEF_OPERATIONS);
+
+    expect(testPeer1.stringify()).toBe(p1.stringify());
+
+    testPeer2.merge(DEF_OPERATIONS);
+    testPeer2.merge(ABC_OPERATIONS);
+
+    expect(testPeer2.stringify()).toBe(testPeer1.stringify());
   });
 });
