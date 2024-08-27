@@ -22,7 +22,14 @@ export const useDoc = (client: string) => {
   const versions = useRef<string[]>([]);
 
   const getNode = (index: number) => {
+    if (index < 0) return undefined;
     let node = document.head;
+
+    while (node) {
+      if (!node.deleted) break;
+      node = node?.right;
+    }
+
     while (node && index > 0) {
       if (!node.deleted) index--;
       node = node.right;
@@ -39,7 +46,9 @@ export const useDoc = (client: string) => {
       setText(document.stringify());
       const off = MockSocket.on('commit', commit => {
         versions.current.push(commit.version);
+        if (commit.author == client) return;
         document.merge(commit.operations);
+        setText(document.stringify());
       });
       return off;
     }
@@ -49,12 +58,20 @@ export const useDoc = (client: string) => {
   return {
     text,
     input(index: number, char: string) {
-      document.insert(char, getNode(index)?.left?.id as ID);
+      document.insert(char, getNode(index - 1)?.id as ID);
       setText(document.stringify());
     },
     delete(index: number) {
-      document.delete(getNode(index)?.id as ID);
+      document.delete(getNode(index - 1)?.id as ID);
       setText(document.stringify());
+    },
+    commit: () => {
+      console.log(`commit`);
+      MockSocket.emit('commit', {
+        author: client,
+        operations: document.commit(),
+        version: Date.now().toString(),
+      });
     },
     setNetwork,
   };
