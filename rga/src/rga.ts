@@ -3,6 +3,7 @@ import { ID, Operation, RGA } from './interface';
 import { createNodeManager, Node } from './node';
 import { OperationToken } from './operation-token';
 
+
 export type CommitHandler<T = any> = (
   operations: Operation[],
   rollback: () => void,
@@ -10,7 +11,7 @@ export type CommitHandler<T = any> = (
 
 type ParentID = ID;
 export class Doc<T = OperationToken[]> implements RGA {
-   head: Node | undefined;
+  head: Node | undefined;
   private nodeManager: ReturnType<typeof createNodeManager>;
 
   private buffer: Operation[];
@@ -42,7 +43,6 @@ export class Doc<T = OperationToken[]> implements RGA {
       insert: new Map(),
     };
   }
-  
 
   private findNode(id: ID): Node | undefined {
     return this.nodeManager.find(id);
@@ -117,6 +117,7 @@ export class Doc<T = OperationToken[]> implements RGA {
   }
 
   commit(): T {
+    
     const tokens = [
       ...Array.from(this.staging.insert.values()),
       ...Array.from(this.staging.delete.values()),
@@ -143,7 +144,8 @@ export class Doc<T = OperationToken[]> implements RGA {
     this.addStage(token);
     return token;
   }
-  delete(id: ID): Operation {
+  delete(id: ID): Operation|undefined {
+    if(!id) return 
     const token = OperationToken.ofDelete({
       id,
     });
@@ -179,11 +181,10 @@ export class Doc<T = OperationToken[]> implements RGA {
         {
           const duplicateTokens = Array.from(
             this.logs.insert.get(token.parent as ID)?.values() ?? [],
-          ).sort(compareToken);
+          ).sort(compareToken).reverse();
           if (duplicateTokens.length) {
-            resolveToken.parent =
-              duplicateTokens.find(op => compareToken(op, token) == 1)?.id ||
-              resolveToken.parent;
+            const target = duplicateTokens.find(op => compareToken(op, token) == 1)
+            resolveToken.parent =target?.id||resolveToken.parent;
           }
           if (token.parent && !this.findNode(token.parent)) {
             this.buffer.push(token);
@@ -195,7 +196,7 @@ export class Doc<T = OperationToken[]> implements RGA {
     return resolveToken;
   }
   merge(token: Operation | Operation[]): void {
-    const tokens = [token].flat().sort(compareToken);
+    const tokens = [token].filter(Boolean).flat().sort(compareToken);
     if (!tokens.length) return;
 
     const lastClock = extractId(tokens.at(-1)!.id).clock;
