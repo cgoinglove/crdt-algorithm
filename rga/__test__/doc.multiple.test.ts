@@ -223,4 +223,30 @@ describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () =>
 
     expect(testPeer2.stringify()).toBe(testPeer1.stringify());
   });
+  it('중복된 부모의 하위 노드들의 병합 issue',()=>{
+    const A = p1.insert('A');
+    const B = p1.insert('B', A.id);
+    const C = p1.insert('C', B.id);
+
+    p1.commit();
+
+    const D = p1.insert('D',C.id)
+    p1.insert('D',D.id) // ABCDD
+
+    expect(p1.stringify()).toBe('ABCDD')
+
+
+    const E = p2.insert('E',C.id)
+    p2.insert('E',E.id)
+
+    expect(p2.stringify()).toBe('ABCEE')
+
+    p1.commit()
+
+    expect(p1.stringify()).toBe('ABCEEDD')
+    expect(p1.stringify()).toBe(p2.stringify())
+    expect(p2.stringify()).toBe(p3.stringify())
+
+
+  })
 });
