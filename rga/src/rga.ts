@@ -32,8 +32,8 @@ export class Doc implements RGA {
     };
   }
 
-  private findNode(id: ID): Node | undefined {
-    let node = this.head;
+  private findNode(id: ID, startNode?: Node): Node | undefined {
+    let node = startNode ?? this.head;
     while (node && node.id != id) {
       node = node?.right;
     }
@@ -54,25 +54,7 @@ export class Doc implements RGA {
     const target = this.findNode(operation.id);
     target?.delete();
   }
-  private addStage(token: Operation) {
-    switch (token.type) {
-      case 'delete':
-        {
-          const duplicate = this.staging.insert.has(token.id);
-          if (duplicate) {
-            this.staging.insert.delete(token.id);
-            this.findNode(token.id)?.delete(true);
-          } else {
-            this.staging.delete.set(token.id, token);
-          }
-        }
-        break;
 
-      case 'insert': {
-        this.staging.insert.set(token.id, token);
-      }
-    }
-  }
   private addLog(tokens: Operation | Operation[]) {
     const commit = [tokens].flat();
     commit.forEach(token => {
@@ -101,18 +83,77 @@ export class Doc implements RGA {
       }
     });
   }
+  private addStage(token: Operation) {
+    switch (token.type) {
+      case 'delete':
+        {
+          const duplicate = this.staging.insert.has(token.id);
+          if (duplicate) {
+            this.staging.insert.delete(token.id);
+            this.findNode(token.id)?.delete(true);
+          } else {
+            this.staging.delete.set(token.id, token);
+          }
+        }
+        break;
+
+      case 'insert': {
+        this.staging.insert.set(token.id, token);
+      }
+    }
+  }
   undo() {
     'undo';
   }
 
   commit(): OperationToken[] {
-    const tokens = [
-      ...Array.from(this.staging.insert.values()),
-      ...Array.from(this.staging.delete.values()),
-    ].sort(compareToken);
+    const insertToken = Array.from(this.staging.insert.values()).sort(
+      compareToken,
+    );
+    const deleteToken = Array.from(this.staging.delete.values()).sort(
+      compareToken,
+    );
+
+    const swap =(a:Operation,b:Operation)=>{
+      const aNode = this.findNode(a.id)!;
+      const bNode = this.findNode(b.id)!;
+
+      const temp = a.id;
+
+      aNode.id = b.id;
+      bNode.id = a.id;
+
+      token.id = temp;
+      node.id = temp;
+
+
+    }
+
+    insertToken.forEach(token => {
+      if (!token.parent || !this.staging.insert.has(token.parent)) return;
+
+      const originParent = this.staging.insert.get(token.parent)!;
+      const parent = this.staging.insert.get(originParent.id)!;
+
+      const parentNode = this.findNode(parent.id)!;
+      const node = this.findNode(token.id)!;
+
+      const temp = parent.id;
+
+      parentNode.id = token.id;
+      parent.id = token.id;
+
+      token.id = temp;
+      node.id = temp;
+
+      token.parent = parent.parent;
+
+    });
 
     this.staging.insert.clear();
     this.staging.delete.clear();
+
+    const tokens = [...insertToken, ...deleteToken];
 
     this.addLog(tokens);
     return tokens;

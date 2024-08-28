@@ -139,13 +139,13 @@ describe('RGA CRDT - 여러 피어 간의 동기화 및 서버 테스트', () =>
 
     expect(server.insert.size).toBe(6);
   });
-  it('다양한 부모에 데이터를 삽입하여 Hello World를 만들어야 합니다', () => {
+  it.only('다양한 부모에 데이터를 삽입하여 Hello World를 만들어야 합니다', () => {
     const helToken1 = p1.insert('H');
 
     const helToken2 = p1.insert('e', helToken1.id);
 
     const helToken3 = p1.insert('l', helToken2.id);
-
+    console.log(p1.commit());
     broadcast('p1', p1.commit());
 
     const loToken1 = p2.insert('l', helToken3.id);
