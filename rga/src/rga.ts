@@ -4,7 +4,7 @@ import { Node } from './node';
 import { OperationToken } from './operation-token';
 
 type ParentID = ID;
-export class Doc implements RGA {
+export class Doc implements RGA<string> {
   head: Node | undefined;
 
   private buffer: Operation[];
@@ -194,7 +194,6 @@ export class Doc implements RGA {
           const duplicateTokens = Array.from(
             this.logs.insert.get(token.parent as ID)?.values() ?? [],
           ).sort(compareToken);
-          // .reverse();
           if (duplicateTokens.length) {
             const target = duplicateTokens.find(
               op => compareToken(op, token) == 1,
@@ -211,9 +210,7 @@ export class Doc implements RGA {
     return resolveToken;
   }
   merge(token: Operation | Operation[]): void {
-    const tokens = [token].filter(Boolean).flat().sort(compareToken);
-
-    if (this.client == 'p2') console.log(tokens.map(OperationToken.hash));
+    const tokens = [token].flat().sort(compareToken);
 
     if (!tokens.length) return;
 

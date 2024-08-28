@@ -1,15 +1,16 @@
 export type ID = `${string}-${number}`;
 
-export interface Operation {
+export interface Operation<Item = string> {
   type: 'insert' | 'delete';
   id: ID;
   parent?: ID;
-  content?: string;
+  content?: Item;
 }
 
-export interface RGA {
-  insert(content: string, parent?: ID): void;
+export interface RGA<Item> {
+  insert(content: Item, parent?: ID): Operation;
   delete(id: ID): void;
   stringify(): string;
-  merge(token: Operation | Operation[]): void;
+  merge(token: Operation<Item> | Operation<Item>[]): void;
+  commit(): Operation<Item>[];
 }
