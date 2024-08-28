@@ -114,40 +114,28 @@ export class Doc implements RGA {
       compareToken,
     );
 
-    const swap =(a:Operation,b:Operation)=>{
+    const swap = (a: Operation, b: Operation) => {
       const aNode = this.findNode(a.id)!;
       const bNode = this.findNode(b.id)!;
-
-      const temp = a.id;
 
       aNode.id = b.id;
       bNode.id = a.id;
 
-      token.id = temp;
-      node.id = temp;
-
-
-    }
+      const temp = a.id;
+      a.id = b.id;
+      b.id = temp;
+    };
 
     insertToken.forEach(token => {
       if (!token.parent || !this.staging.insert.has(token.parent)) return;
 
-      const originParent = this.staging.insert.get(token.parent)!;
-      const parent = this.staging.insert.get(originParent.id)!;
+      const parent = this.staging.insert.get(token.parent)!;
 
-      const parentNode = this.findNode(parent.id)!;
-      const node = this.findNode(token.id)!;
-
-      const temp = parent.id;
-
-      parentNode.id = token.id;
-      parent.id = token.id;
-
-      token.id = temp;
-      node.id = temp;
-
+      if (parent.id != token.parent) {
+        swap(token, this.staging.insert.get(parent.id)!);
+      }
+      swap(token, parent);
       token.parent = parent.parent;
-
     });
 
     this.staging.insert.clear();
@@ -205,9 +193,8 @@ export class Doc implements RGA {
         {
           const duplicateTokens = Array.from(
             this.logs.insert.get(token.parent as ID)?.values() ?? [],
-          )
-            .sort(compareToken)
-            .reverse();
+          ).sort(compareToken);
+          // .reverse();
           if (duplicateTokens.length) {
             const target = duplicateTokens.find(
               op => compareToken(op, token) == 1,
@@ -225,6 +212,9 @@ export class Doc implements RGA {
   }
   merge(token: Operation | Operation[]): void {
     const tokens = [token].filter(Boolean).flat().sort(compareToken);
+
+    if (this.client == 'p2') console.log(tokens.map(OperationToken.hash));
+
     if (!tokens.length) return;
 
     const lastClock = extractId(tokens.at(-1)!.id).clock;
