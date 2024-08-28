@@ -1,18 +1,11 @@
 import { compareToken, createId, extractId, updateClock } from './id';
 import { ID, Operation, RGA } from './interface';
-import { createNodeManager, Node } from './node';
+import { Node } from './node';
 import { OperationToken } from './operation-token';
 
-
-export type CommitHandler<T = any> = (
-  operations: Operation[],
-  rollback: () => void,
-) => T;
-
 type ParentID = ID;
-export class Doc<T = OperationToken[]> implements RGA {
+export class Doc implements RGA {
   head: Node | undefined;
-  private nodeManager: ReturnType<typeof createNodeManager>;
 
   private buffer: Operation[];
 
@@ -26,12 +19,7 @@ export class Doc<T = OperationToken[]> implements RGA {
     insert: Map<ParentID, Map<ID, Operation>>;
   };
 
-  constructor(
-    public readonly client: string,
-    private commitHandler?: CommitHandler<T>,
-  ) {
-    this.nodeManager = createNodeManager();
-
+  constructor(public readonly client: string) {
     this.buffer = [];
 
     this.staging = {
@@ -45,7 +33,11 @@ export class Doc<T = OperationToken[]> implements RGA {
   }
 
   private findNode(id: ID): Node | undefined {
-    return this.nodeManager.find(id);
+    let node = this.head;
+    while (node && node.id != id) {
+      node = node?.right;
+    }
+    return node;
   }
   private applyInsert(operation: Operation) {
     const parent = this.findNode(operation.parent!);
@@ -53,10 +45,7 @@ export class Doc<T = OperationToken[]> implements RGA {
       throw new Error(
         `[${this.client}] Not Found Parent ${OperationToken.hash(operation)}`,
       );
-    const newNode: Node = this.nodeManager.create(
-      operation.id,
-      operation.content!,
-    );
+    const newNode: Node = new Node(operation.id, operation.content!);
     if (parent) return parent.append(newNode);
     if (this.head) newNode.append(this.head);
     this.head = newNode;
@@ -72,7 +61,7 @@ export class Doc<T = OperationToken[]> implements RGA {
           const duplicate = this.staging.insert.has(token.id);
           if (duplicate) {
             this.staging.insert.delete(token.id);
-            this.nodeManager.forceDelete(token.id);
+            this.findNode(token.id)?.delete(true);
           } else {
             this.staging.delete.set(token.id, token);
           }
@@ -116,23 +105,17 @@ export class Doc<T = OperationToken[]> implements RGA {
     'undo';
   }
 
-  commit(): T {
-    
+  commit(): OperationToken[] {
     const tokens = [
       ...Array.from(this.staging.insert.values()),
       ...Array.from(this.staging.delete.values()),
     ].sort(compareToken);
+
     this.staging.insert.clear();
     this.staging.delete.clear();
+
     this.addLog(tokens);
-    const rollback = () => {
-      tokens.forEach(this.addStage.bind(this));
-      this.deleteLog(tokens);
-    };
-    if (this.commitHandler) {
-      return this.commitHandler(tokens, rollback);
-    }
-    return tokens as T;
+    return tokens;
   }
   insert(content: string, parent?: ID): Operation {
     const token = OperationToken.ofInsert({
@@ -144,8 +127,8 @@ export class Doc<T = OperationToken[]> implements RGA {
     this.addStage(token);
     return token;
   }
-  delete(id: ID): Operation|undefined {
-    if(!id) return 
+  delete(id: ID): Operation | undefined {
+    if (!id) return;
     const token = OperationToken.ofDelete({
       id,
     });
@@ -181,10 +164,14 @@ export class Doc<T = OperationToken[]> implements RGA {
         {
           const duplicateTokens = Array.from(
             this.logs.insert.get(token.parent as ID)?.values() ?? [],
-          ).sort(compareToken).reverse();
+          )
+            .sort(compareToken)
+            .reverse();
           if (duplicateTokens.length) {
-            const target = duplicateTokens.find(op => compareToken(op, token) == 1)
-            resolveToken.parent =target?.id||resolveToken.parent;
+            const target = duplicateTokens.find(
+              op => compareToken(op, token) == 1,
+            );
+            resolveToken.parent = target?.id || resolveToken.parent;
           }
           if (token.parent && !this.findNode(token.parent)) {
             this.buffer.push(token);

@@ -9,7 +9,16 @@ export class Node<T = string> {
     this.deleted = false;
   }
   delete(force: boolean = false) {
-    this.deleted = true;
+    if (!force) {
+      this.deleted = true;
+      return;
+    }
+    if (this?.left) {
+      this.left.right = this.right;
+    }
+    if (this?.right) {
+      this.right.left = this.left;
+    }
   }
   append(node: Node<T>) {
     if (this.right) {
@@ -28,28 +37,3 @@ export class Node<T = string> {
     this.left = node;
   }
 }
-
-export const createNodeManager = () => {
-  const cache = new Map<string, Node<string>>();
-
-  return {
-    find(id: string): Node<string> | undefined {
-      return cache.get(id);
-    },
-    create(...args: ConstructorParameters<typeof Node<string>>): Node {
-      const instance = new Node<string>(...args);
-      cache.set(args[0], instance);
-      return instance;
-    },
-    forceDelete(id: string) {
-      const target = cache.get(id);
-      cache.delete(id);
-      if (target?.left) {
-        target.left.right = target.right;
-      }
-      if (target?.right) {
-        target.right.left = target.left;
-      }
-    },
-  };
-};

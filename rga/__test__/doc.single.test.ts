@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Doc } from '../src/rga';
+import { OperationToken } from '../src/operation-token';
 
 // Mocking autoIncrement and LamportClock
 
@@ -22,38 +23,6 @@ describe('Doc 클래스', () => {
     expect(doc.stringify()).toBe('B');
   });
 
-  it('commit 시 올바른 작업들이 commitHandler로 전달되어야 한다', () => {
-    const commitHandlerMock = vi.fn(operations => {
-      expect(operations.length).toBe(2);
-      expect(operations[0].type).toBe('insert');
-      expect(operations[1].type).toBe('insert');
-      return '커밋 성공';
-    });
-
-    const doc = new Doc('client', commitHandlerMock);
-    const root = doc.insert('A');
-    doc.insert('B', root.id);
-    const commitResult = doc.commit();
-    expect(commitResult).toBe('커밋 성공');
-    expect(commitHandlerMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('commit 중 롤백이 필요할 경우 롤백이 제대로 호출되어야 한다', () => {
-    const commitHandlerMock = vi.fn((operations, rollback) => {
-      expect(doc['staging'].insert).toHaveLength(0);
-      rollback();
-      expect(doc['staging'].insert).toHaveLength(2);
-      return '커밋 실패';
-    });
-
-    const doc = new Doc('client', commitHandlerMock);
-    const root = doc.insert('A');
-    doc.insert('B', root.id);
-
-    const commitResult = doc.commit();
-    expect(commitResult).toBe('커밋 실패');
-  });
-
   it('delete를 호출하면 insert에 있던 토큰이 삭제되는지 확인한다', () => {
     const doc = new Doc('client');
     const root = doc.insert('A');
@@ -64,5 +33,22 @@ describe('Doc 클래스', () => {
     doc.delete(root.id);
 
     expect(doc['staging'].delete).toHaveLength(0);
+  });
+  it('올바른 commit 확인', () => {
+    const doc = new Doc('client');
+    const root = doc.insert('A');
+
+    const result = doc.commit();
+    expect(doc['staging'].delete).toHaveLength(0);
+    expect(doc['staging'].insert).toHaveLength(0);
+
+    expect(result.map(OperationToken.hash)).toEqual([
+      OperationToken.hash(
+        OperationToken.ofInsert({
+          id: root.id,
+          content: root.content,
+        }),
+      ),
+    ]);
   });
 });

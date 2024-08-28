@@ -1,86 +1,96 @@
 import { describe, it, expect } from 'vitest';
-import { createNodeManager } from '../src/node'; // 파일 경로에 맞게 수정하세요
+import { Node } from '../src/node';
 
-describe('Node 클래스 및 createNodeManager 테스트', () => {
-  describe('createNodeManager 기본 기능 테스트', () => {
-    const nodeManager = createNodeManager();
-
-    it('노드를 정상적으로 생성하고 캐시에 저장', () => {
-      const node = nodeManager.create('1', 'A');
-      expect(node.value).toBe('A');
-      expect(node.id).toBe('1');
-      expect(node.deleted).toBe(false);
-    });
-
-    it('생성된 노드를 find 메서드로 검색', () => {
-      const node = nodeManager.find('1');
-      expect(node).toBeDefined();
-      expect(node?.value).toBe('A');
-    });
-
-    it('존재하지 않는 ID를 검색하면 undefined를 반환', () => {
-      const node = nodeManager.find('999');
-      expect(node).toBeUndefined();
-    });
+describe('Node 클래스 테스트', () => {
+  it('노드 생성 테스트', () => {
+    const node = new Node('1', 'A');
+    expect(node.id).toBe('1');
+    expect(node.value).toBe('A');
+    expect(node.deleted).toBe(false);
+    expect(node.left).toBeUndefined();
+    expect(node.right).toBeUndefined();
   });
 
-  describe('Node 클래스 메서드 append 및 prepend 테스트', () => {
-    const nodeManager = createNodeManager();
+  it('append 함수 테스트', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
 
-    it('append를 통해 노드를 연결', () => {
-      const nodeA = nodeManager.create('2', 'A');
-      const nodeB = nodeManager.create('3', 'B');
+    nodeA.append(nodeB);
 
-      nodeA.append(nodeB);
-
-      expect(nodeA.right).toBe(nodeB);
-      expect(nodeB.left).toBe(nodeA);
-    });
-
-    it('prepend를 통해 노드를 연결', () => {
-      const nodeA = nodeManager.create('4', 'A');
-      const nodeB = nodeManager.create('5', 'B');
-
-      nodeB.prepend(nodeA);
-
-      expect(nodeB.left).toBe(nodeA);
-      expect(nodeA.right).toBe(nodeB);
-    });
-
-    it('append로 중간에 노드를 삽입', () => {
-      const nodeA = nodeManager.create('6', 'A');
-      const nodeB = nodeManager.create('7', 'B');
-      const nodeC = nodeManager.create('8', 'C');
-
-      nodeA.append(nodeB);
-      nodeA.append(nodeC); // nodeA와 nodeB 사이에 nodeC 삽입
-
-      expect(nodeA.right).toBe(nodeC);
-      expect(nodeC.left).toBe(nodeA);
-      expect(nodeC.right).toBe(nodeB);
-      expect(nodeB.left).toBe(nodeC);
-    });
+    expect(nodeA.right).toBe(nodeB);
+    expect(nodeB.left).toBe(nodeA);
   });
 
-  describe('Node 삭제 기능 테스트', () => {
-    const nodeManager = createNodeManager();
+  it('prepend 함수 테스트', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
 
-    it('노드를 삭제하면 deleted 플래그가 true로 설정됨', () => {
-      const node = nodeManager.create('9', 'A');
-      node.delete();
-      expect(node.deleted).toBe(true);
-    });
+    nodeA.prepend(nodeB);
 
-    it('삭제 후에도 append 및 prepend 기능은 정상 작동', () => {
-      const nodeA = nodeManager.create('10', 'A');
-      const nodeB = nodeManager.create('11', 'B');
+    expect(nodeA.left).toBe(nodeB);
+    expect(nodeB.right).toBe(nodeA);
+  });
 
-      nodeA.delete();
-      nodeA.append(nodeB);
+  it('append 함수: 중간에 삽입 테스트', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
 
-      expect(nodeA.deleted).toBe(true);
-      expect(nodeA.right).toBe(nodeB);
-      expect(nodeB.left).toBe(nodeA);
-    });
+    nodeA.append(nodeC); // A -> C
+    nodeA.append(nodeB); // A -> B -> C
+
+    expect(nodeA.right).toBe(nodeB);
+    expect(nodeB.left).toBe(nodeA);
+    expect(nodeB.right).toBe(nodeC);
+    expect(nodeC.left).toBe(nodeB);
+  });
+
+  it('prepend 함수: 중간에 삽입 테스트', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
+
+    nodeC.prepend(nodeA); // A -> C
+    nodeC.prepend(nodeB); // A -> B -> C
+
+    expect(nodeC.left).toBe(nodeB);
+    expect(nodeB.right).toBe(nodeC);
+    expect(nodeB.left).toBe(nodeA);
+    expect(nodeA.right).toBe(nodeB);
+  });
+
+  it('delete 함수 테스트 (소프트 삭제)', () => {
+    const nodeA = new Node('1', 'A');
+    nodeA.delete();
+    expect(nodeA.deleted).toBe(true);
+  });
+
+  it('delete 함수 테스트 (강제 삭제)', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
+
+    nodeA.append(nodeB);
+    nodeB.append(nodeC); // A -> B -> C
+
+    nodeB.delete(true); // B 삭제, A -> C
+
+    expect(nodeA.right).toBe(nodeC);
+    expect(nodeC.left).toBe(nodeA);
+  });
+
+  it('delete 함수 테스트: 중간 노드 강제 삭제', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
+
+    nodeA.append(nodeB);
+    nodeB.append(nodeC); // A -> B -> C
+
+    nodeB.delete(true); // B 강제 삭제
+
+    expect(nodeA.right).toBe(nodeC);
+    expect(nodeC.left).toBe(nodeA);
+    expect(nodeB.deleted).toBe(false); // 노드는 강제 삭제 되었지만, 실제로는 '삭제' 상태 아님
   });
 });
