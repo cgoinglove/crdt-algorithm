@@ -22,8 +22,9 @@ export class Node<T = string> {
   }
   append(node: Node<T>) {
     if (this.right) {
-      node.right = this.right;
-      this.right.left = node;
+      const tail = node.findTail();
+      tail.right = this.right;
+      this.right.left = tail;
     }
     node.left = this;
     this.right = node;
@@ -33,7 +34,22 @@ export class Node<T = string> {
       node.left = this.left;
       this.left.right = node;
     }
-    node.right = this;
-    this.left = node;
+    const tail = node.findTail();
+    tail.right = this;
+    this.left = tail;
+  }
+  findHead() {
+    let head: Node<T> | undefined = this;
+    while (head.left) {
+      head = head.left;
+    }
+    return head;
+  }
+  findTail() {
+    let tail: Node<T> | undefined = this;
+    while (tail.right) {
+      tail = tail.right;
+    }
+    return tail;
   }
 }

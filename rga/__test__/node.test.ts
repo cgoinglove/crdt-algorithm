@@ -93,4 +93,60 @@ describe('Node 클래스 테스트', () => {
     expect(nodeC.left).toBe(nodeA);
     expect(nodeB.deleted).toBe(false); // 노드는 강제 삭제 되었지만, 실제로는 '삭제' 상태 아님
   });
+
+  it('마지막 노드 찾기', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
+
+    nodeA.append(nodeB);
+    nodeB.append(nodeC); // A -> B -> C
+
+    expect(nodeA.findTail()).toBe(nodeB.findTail());
+    expect(nodeA.findTail()).toBe(nodeC.findTail());
+    expect(nodeC).toBe(nodeC.findTail());
+  });
+
+  it('첫번쨰 노드 찾기', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
+
+    nodeA.append(nodeB);
+    nodeB.append(nodeC); // A -> B -> C
+
+    expect(nodeA.findHead()).toBe(nodeB.findHead());
+    expect(nodeA.findHead()).toBe(nodeC.findHead());
+    expect(nodeA).toBe(nodeC.findHead());
+  });
+
+  it('여러 노드 한번에 append,prepend', () => {
+    const nodeA = new Node('1', 'A');
+    const nodeB = new Node('2', 'B');
+    const nodeC = new Node('3', 'C');
+    const nodeD = new Node('4', 'D');
+    const nodeE = new Node('5', 'E');
+    const nodeF = new Node('6', 'F');
+    const nodeG = new Node('7', 'G');
+    const nodeH = new Node('8', 'H');
+
+    nodeA.append(nodeB);
+    nodeC.append(nodeD);
+    nodeE.append(nodeF);
+    nodeG.append(nodeH);
+
+    nodeB.append(nodeG); // A->B->G->H
+
+    expect(nodeG.left).toBe(nodeB);
+
+    nodeB.append(nodeC); // A->B->->C->D->G->H
+
+    expect(nodeG.left).toBe(nodeD);
+    expect(nodeD.right).toBe(nodeG);
+
+    nodeG.prepend(nodeE); // A->B->->C->D->E->F->G->H
+
+    expect(nodeG.left).toBe(nodeF);
+    expect(nodeF.right).toBe(nodeG);
+  });
 });
