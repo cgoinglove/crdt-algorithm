@@ -7,6 +7,13 @@ export interface Operation<Item = string> {
   content?: Item;
 }
 
+export interface Commit<Item> {
+  author: string;
+  version: string;
+  timestamp: number;
+  operations: Operation<Item>[];
+}
+
 export interface RGA<Item> {
   insert(content: Item, parent?: ID): Operation;
   delete(id: ID): void;

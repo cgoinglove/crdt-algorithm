@@ -114,35 +114,10 @@ export class Doc implements RGA<string> {
       compareToken,
     );
 
-    const swap = (a: Operation, b: Operation) => {
-      const aNode = this.findNode(a.id)!;
-      const bNode = this.findNode(b.id)!;
-
-      aNode.id = b.id;
-      bNode.id = a.id;
-
-      const temp = a.id;
-      a.id = b.id;
-      b.id = temp;
-    };
-
-    insertToken.forEach(token => {
-      if (!token.parent || !this.staging.insert.has(token.parent)) return;
-
-      const parent = this.staging.insert.get(token.parent)!;
-
-      if (parent.id != token.parent) {
-        swap(token, this.staging.insert.get(parent.id)!);
-      }
-      swap(token, parent);
-      token.parent = parent.parent;
-    });
-
     this.staging.insert.clear();
     this.staging.delete.clear();
 
-    const tokens = [...insertToken, ...deleteToken];
-
+    const tokens = [...insertToken, ...deleteToken].sort(compareToken);
     this.addLog(tokens);
     return tokens;
   }
