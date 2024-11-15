@@ -7,9 +7,14 @@ export class ClockId {
   constructor(public readonly clientId: string) {
     this.clock = new LamportClock();
   }
-
+  private id(clock: number) {
+    return `${this.clientId}-${clock}`;
+  }
+  get() {
+    return this.id(this.clock.getTime());
+  }
   gen(): ID {
-    return `${this.clientId}-${this.clock.tick()}`;
+    return this.id(this.clock.tick());
   }
   updateClock(time: number) {
     this.clock.update(time);

@@ -1,7 +1,7 @@
 export class Node<T = string> {
   deleted: boolean;
   constructor(
-    public id: string,
+    public readonly id: string,
     public readonly value: T,
     public left?: Node<T>,
     public right?: Node<T>,
@@ -22,7 +22,7 @@ export class Node<T = string> {
   }
   append(node: Node<T>) {
     if (this.right) {
-      const tail = node.findTail();
+      const tail = node.getTail();
       tail.right = this.right;
       this.right.left = tail;
     }
@@ -34,18 +34,18 @@ export class Node<T = string> {
       node.left = this.left;
       this.left.right = node;
     }
-    const tail = node.findTail();
+    const tail = node.getTail();
     tail.right = this;
     this.left = tail;
   }
-  findHead() {
+  getHead() {
     let head: Node<T> | undefined = this;
     while (head.left) {
       head = head.left;
     }
     return head;
   }
-  findTail() {
+  getTail() {
     let tail: Node<T> | undefined = this;
     while (tail.right) {
       tail = tail.right;

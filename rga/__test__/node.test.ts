@@ -102,9 +102,9 @@ describe('Node 클래스 테스트', () => {
     nodeA.append(nodeB);
     nodeB.append(nodeC); // A -> B -> C
 
-    expect(nodeA.findTail()).toBe(nodeB.findTail());
-    expect(nodeA.findTail()).toBe(nodeC.findTail());
-    expect(nodeC).toBe(nodeC.findTail());
+    expect(nodeA.getTail()).toBe(nodeB.getTail());
+    expect(nodeA.getTail()).toBe(nodeC.getTail());
+    expect(nodeC).toBe(nodeC.getTail());
   });
 
   it('첫번쨰 노드 찾기', () => {
@@ -115,9 +115,9 @@ describe('Node 클래스 테스트', () => {
     nodeA.append(nodeB);
     nodeB.append(nodeC); // A -> B -> C
 
-    expect(nodeA.findHead()).toBe(nodeB.findHead());
-    expect(nodeA.findHead()).toBe(nodeC.findHead());
-    expect(nodeA).toBe(nodeC.findHead());
+    expect(nodeA.getHead()).toBe(nodeB.getHead());
+    expect(nodeA.getHead()).toBe(nodeC.getHead());
+    expect(nodeA).toBe(nodeC.getHead());
   });
 
   it('여러 노드 한번에 append,prepend', () => {
