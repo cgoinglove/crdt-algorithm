@@ -1,6 +1,7 @@
 // doc.test.ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Doc } from '../src';
+import { OperationToken } from '../src/operation-token';
 
 describe('Doc', () => {
   let doc: Doc<string>;
@@ -97,7 +98,7 @@ describe('Doc', () => {
     }).toThrowError('Not Found Node');
   });
 
-  it.only('should buffer operations with missing dependencies during merge', () => {
+  it('should buffer operations with missing dependencies during merge', () => {
     const opInsert = {
       type: 'insert' as const,
       id: 'client2::1',
@@ -130,15 +131,18 @@ describe('Doc', () => {
     expect(values).toEqual(['A', 'B']);
   });
 
-  it('should handle concurrent inserts at the same parent from different peers', () => {
+  it.only('should handle concurrent inserts at the same parent from different peers', () => {
     const doc1 = new Doc<string>('peer1');
     const doc2 = new Doc<string>('peer2');
     const doc3 = new Doc<string>('peer3');
 
-    // Initial state: A -> B -> C
     const opA = doc1.insert('A');
     const opB = doc1.insert('B', opA.id);
     const opC = doc1.insert('C', opB.id);
+
+    const defaultOperations = doc1.commit();
+    doc2.merge(defaultOperations);
+    doc3.merge(defaultOperations);
 
     // Peer1 inserts P1A -> P1B after B
     const opP1A = doc1.insert('P1A', opB.id);
@@ -148,21 +152,25 @@ describe('Doc', () => {
     const opP2A = doc2.insert('P2A', opB.id);
     const opP2B = doc2.insert('P2B', opP2A.id);
 
-    // Merge operations
-    const opsFromDoc1 = [opA, opB, opC, opP1A, opP1B];
-    const opsFromDoc2 = [opP2A, opP2B];
+    const p1Commit = doc1.commit();
+    const p2Commit = doc2.commit();
 
-    doc1.merge(opsFromDoc2);
-    doc2.merge(opsFromDoc1);
+    doc1.merge(p2Commit);
+    doc2.merge(p1Commit);
+    doc3.merge([...p1Commit, ...p2Commit]);
 
     // Both docs should have the same state
     const list1 = doc1.list();
     const list2 = doc2.list();
+    const list3 = doc3.list();
 
     const values1 = list1.map(node => node.value.value);
     const values2 = list2.map(node => node.value.value);
+    const values3 = list3.map(node => node.value.value);
 
+    expect(values1).toEqual(['A', 'B', 'P2A', 'P2B', 'P1A', 'P1B', 'C']);
     expect(values1).toEqual(values2);
+    expect(values2).toEqual(values3);
   });
 
   it('should ensure idempotence when merging the same operations multiple times', () => {
