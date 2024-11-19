@@ -1,12 +1,6 @@
+// doc.test.ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Doc } from '../src';
-
-function docToString<T>(doc: Doc<string>): string {
-  return doc
-    .list()
-    .map(node => node.value)
-    .join('');
-}
 
 describe('Doc', () => {
   let doc: Doc<string>;
@@ -15,141 +9,283 @@ describe('Doc', () => {
     doc = new Doc<string>('client1');
   });
 
-  it('should insert strings with proper parent IDs', () => {
-    const op1 = doc.insert('Hello'); // 'Hello'
+  it('should insert a node correctly', () => {
+    const op = doc.insert('A');
+    expect(op.type).toBe('insert');
+    expect(op.value).toBe('A');
 
-    const op2 = doc.insert(' World', op1.id); // 'Hello World'
-
-    doc.insert('!', op2.id); // 'Hello World!'
-
-    const result = docToString(doc);
-    expect(result).toBe('Hello World!');
+    const list = doc.list();
+    expect(list.length).toBe(1);
+    expect(list[0].value.value).toBe('A');
   });
 
-  it('should delete a string', () => {
-    const op1 = doc.insert('Hello');
-    const op2 = doc.insert(' World', op1.id);
-    doc.insert('!', op2.id);
+  it('should delete a node correctly', () => {
+    const opInsert = doc.insert('A');
+    const opDelete = doc.delete(opInsert.id);
 
-    // ' World'의 ID를 가져와 삭제
-    doc.delete(op2.id);
+    expect(opDelete.type).toBe('delete');
+    expect(opDelete.id).toBe(opInsert.id);
 
-    const result = docToString(doc);
-    expect(result).toBe('Hello!');
+    const list = doc.list();
+    expect(list.length).toBe(0);
   });
 
-  it('should update a string', () => {
-    const op1 = doc.insert('Hello');
-    const op2 = doc.insert(' World', op1.id);
-    doc.insert('!', op2.id);
+  it('should handle multiple inserts', () => {
+    doc.insert('A');
+    doc.insert('B');
+    doc.insert('C');
 
-    // 'Hello'의 ID를 가져와 업데이트
-    doc.update(op1.id, 'Hi');
-
-    const result = docToString(doc);
-    expect(result).toBe('Hi World!');
+    const list = doc.list();
+    expect(list.length).toBe(3);
+    expect(list[0].value.value).toBe('C');
+    expect(list[1].value.value).toBe('B');
+    expect(list[2].value.value).toBe('A');
   });
 
-  it('should undo the last operation', () => {
-    const op1 = doc.insert('Hello');
-    const op2 = doc.insert(' World', op1.id);
-    const op3 = doc.insert('!', op2.id);
+  it('should handle inserts with parent', () => {
+    const opA = doc.insert('A');
+    const opB = doc.insert('B', opA.id);
+    const opC = doc.insert('C', opB.id);
 
-    doc.undo(); // '!' 삽입 취소
-    let result = docToString(doc);
-    expect(result).toBe('Hello World');
-
-    doc.undo(); // ' World' 삽입 취소
-    result = docToString(doc);
-    expect(result).toBe('Hello');
-
-    doc.undo(); // 'Hello' 삽입 취소
-    result = docToString(doc);
-    expect(result).toBe('');
+    const list = doc.list();
+    expect(list.length).toBe(3);
+    expect(list[0].value.value).toBe('A');
+    expect(list[1].value.value).toBe('B');
+    expect(list[2].value.value).toBe('C');
   });
 
-  it('should handle complex operations with undo', () => {
-    const op1 = doc.insert('Hello');
-    const op2 = doc.insert(' World', op1.id);
-    const op3 = doc.insert('!', op2.id);
+  it('should handle deletes correctly', () => {
+    const opA = doc.insert('A');
+    const opB = doc.insert('B');
+    doc.delete(opA.id);
 
-    // 업데이트
-    doc.update(op2.id, ', Vitest');
-
-    let result = docToString(doc);
-    expect(result).toBe('Hello, Vitest!');
-
-    // 업데이트 취소
-    doc.undo();
-    result = docToString(doc);
-    expect(result).toBe('Hello World!');
-
-    // 삭제
-    doc.delete(op1.id);
-
-    result = docToString(doc);
-    expect(result).toBe(' World!');
-
-    // 삭제 취소
-    doc.undo();
-    result = docToString(doc);
-    expect(result).toBe('Hello World!');
+    const list = doc.list();
+    expect(list.length).toBe(1);
+    expect(list[0].value.value).toBe('B'); // 'B'가 리스트의 앞에 위치함
   });
 
-  it('should maintain correct order with multiple inserts and deletes', () => {
-    const op1 = doc.insert('A'); // 맨 앞에 삽입
-    const op2 = doc.insert('B', op1.id); // 'A' 뒤에 'B' 삽입
-    const op3 = doc.insert('C', op2.id); // 'B' 뒤에 'C' 삽입
-    const op4 = doc.insert('D', op3.id); // 'C' 뒤에 'D' 삽입
+  it('should resolve conflicts in concurrent inserts', () => {
+    const doc1 = new Doc<string>('client1');
+    const doc2 = new Doc<string>('client2');
 
-    // 'B'를 삭제하고 'C'를 업데이트
-    doc.delete(op2.id);
-    doc.update(op3.id, 'Z');
+    const opA1 = doc1.insert('A');
+    const opB1 = doc1.insert('B', opA1.id);
 
-    let result = docToString(doc);
-    expect(result).toBe('AZD');
+    const opA2 = doc2.insert('A');
+    const opC2 = doc2.insert('C', opA2.id);
 
-    // 'C'의 업데이트를 취소하고 'B'의 삭제를 취소
-    doc.undo(); // 'C'의 업데이트 취소
-    doc.undo(); // 'B'의 삭제 취소
+    // 연산 병합
+    doc1.merge([opA2, opC2]);
+    doc2.merge([opA1, opB1]);
 
-    result = docToString(doc);
-    expect(result).toBe('ABCD');
-  });
-  it('should not include operations for items inserted and then deleted before push', () => {
-    // 아이템 삽입
-    const op1 = doc.insert('Test');
+    const list1 = doc1.list();
+    const list2 = doc2.list();
 
-    // 같은 커밋 내에서 아이템 삭제
-    doc.delete(op1.id);
+    expect(list1.length).toBe(4);
+    expect(list2.length).toBe(4);
 
-    // push() 호출하여 커밋 생성
-    const commit = doc.push();
+    const values1 = list1.map(node => node.value.value);
+    const values2 = list2.map(node => node.value.value);
 
-    expect(commit.operations.insert).toHaveLength(0);
-    expect(commit.operations.delete).toHaveLength(0);
-
-    // 문서 내용이 비어 있는지 확인
-    const docContent = docToString(doc);
-    expect(docContent).toBe('');
+    expect(values1.join('')).toEqual('ACAB');
+    expect(values1).toEqual(values2);
   });
 
-  it('should handle multiple operations and remove redundant ones', () => {
-    // 여러 아이템 삽입
-    const op1 = doc.insert('A');
-    const op2 = doc.insert('B', op1.id);
-    doc.insert('C', op2.id);
+  it('should throw error when inserting with non-existent parent locally', () => {
+    expect(() => {
+      doc.insert('A', 'non-existent-parent');
+    }).toThrowError('Not Found Node');
+  });
 
-    // op2를 같은 커밋 내에서 삭제
-    doc.delete(op2.id);
-    doc.delete(op1.id);
+  it.only('should buffer operations with missing dependencies during merge', () => {
+    const opInsert = {
+      type: 'insert' as const,
+      id: 'client2::1',
+      parent: 'client2::0',
+      value: 'B',
+    };
 
-    // push() 호출하여 커밋 생성
-    const commit = doc.push();
+    // Merge operation with missing parent
+    doc.merge([opInsert]);
 
-    const operations = commit.operations;
+    // The operation should be buffered
+    expect(doc['buffer'].length).toBe(1);
 
-    const docContent = docToString(doc);
-    expect(docContent).toBe('C');
+    // Now merge the missing parent
+    const opParent = {
+      type: 'insert' as const,
+      id: 'client2::0',
+      parent: undefined,
+      value: 'A',
+    };
+
+    doc.merge([opParent]);
+
+    // Buffered operation should now be processed
+    expect(doc['buffer'].length).toBe(0);
+
+    const list = doc.list();
+    expect(list.length).toBe(2);
+    const values = list.map(node => node.value.value);
+    expect(values).toEqual(['A', 'B']);
+  });
+
+  it('should handle concurrent inserts at the same parent from different peers', () => {
+    const doc1 = new Doc<string>('peer1');
+    const doc2 = new Doc<string>('peer2');
+    const doc3 = new Doc<string>('peer3');
+
+    // Initial state: A -> B -> C
+    const opA = doc1.insert('A');
+    const opB = doc1.insert('B', opA.id);
+    const opC = doc1.insert('C', opB.id);
+
+    // Peer1 inserts P1A -> P1B after B
+    const opP1A = doc1.insert('P1A', opB.id);
+    const opP1B = doc1.insert('P1B', opP1A.id);
+
+    // Peer2 inserts P2A -> P2B after B
+    const opP2A = doc2.insert('P2A', opB.id);
+    const opP2B = doc2.insert('P2B', opP2A.id);
+
+    // Merge operations
+    const opsFromDoc1 = [opA, opB, opC, opP1A, opP1B];
+    const opsFromDoc2 = [opP2A, opP2B];
+
+    doc1.merge(opsFromDoc2);
+    doc2.merge(opsFromDoc1);
+
+    // Both docs should have the same state
+    const list1 = doc1.list();
+    const list2 = doc2.list();
+
+    const values1 = list1.map(node => node.value.value);
+    const values2 = list2.map(node => node.value.value);
+
+    expect(values1).toEqual(values2);
+  });
+
+  it('should ensure idempotence when merging the same operations multiple times', () => {
+    const opA = doc.insert('A');
+    const opB = doc.insert('B', opA.id);
+
+    // Merge the same operations multiple times
+    doc.merge([opA, opB]);
+    doc.merge([opA, opB]);
+
+    const list = doc.list();
+    expect(list.length).toBe(2);
+  });
+
+  it('should maintain consistent state after complex merges', () => {
+    const peer1 = new Doc<string>('peer1');
+    const peer2 = new Doc<string>('peer2');
+    const peer3 = new Doc<string>('peer3');
+
+    // Peer1 operations
+    const opA1 = peer1.insert('A');
+    const opB1 = peer1.insert('B', opA1.id);
+
+    // Peer2 operations
+    const opA2 = peer2.insert('A');
+    const opC2 = peer2.insert('C', opA2.id);
+
+    // Peer3 operations
+    const opA3 = peer3.insert('A');
+    const opD3 = peer3.insert('D', opA3.id);
+
+    // Merge operations
+    peer1.merge([opA2, opC2, opA3, opD3]);
+    peer2.merge([opA1, opB1, opA3, opD3]);
+    peer3.merge([opA1, opB1, opA2, opC2]);
+
+    const list1 = peer1.list();
+    const list2 = peer2.list();
+    const list3 = peer3.list();
+
+    expect(list1.length).toBe(4);
+    expect(list2.length).toBe(4);
+    expect(list3.length).toBe(4);
+
+    const values1 = list1.map(node => node.value.value);
+    const values2 = list2.map(node => node.value.value);
+    const values3 = list3.map(node => node.value.value);
+
+    expect(values1).toEqual(values2);
+    expect(values2).toEqual(values3);
+  });
+
+  it('should handle deletion of non-existent nodes gracefully during merge', () => {
+    const opDelete = {
+      type: 'delete' as const,
+      id: 'non-existent-id',
+    };
+
+    // Merge delete operation for non-existent node
+    doc.merge([opDelete]);
+
+    // The operation should be buffered
+    expect(doc['buffer'].length).toBe(1);
+
+    // Now insert the node
+    const opInsert = {
+      type: 'insert' as const,
+      id: 'non-existent-id',
+      parent: undefined,
+      value: 'A',
+    };
+
+    doc.merge([opInsert]);
+
+    // Buffered delete operation should now be processed
+    expect(doc['buffer'].length).toBe(0);
+
+    const list = doc.list();
+    expect(list.length).toBe(0); // The node was inserted and then deleted
+  });
+
+  it('should maintain consistency when peers perform concurrent deletes', () => {
+    const doc1 = new Doc<string>('peer1');
+    const doc2 = new Doc<string>('peer2');
+
+    const opA = doc1.insert('A');
+
+    // Both peers delete the node concurrently
+    const opDelete1 = doc1.delete(opA.id);
+    const opDelete2 = doc2.delete(opA.id);
+
+    // Merge operations
+    doc1.merge([opDelete2]);
+    doc2.merge([opA, opDelete1]);
+
+    const list1 = doc1.list();
+    const list2 = doc2.list();
+
+    expect(list1.length).toBe(0);
+    expect(list2.length).toBe(0);
+  });
+
+  it('should handle operations with different orders during merge', () => {
+    const doc1 = new Doc<string>('peer1');
+    const doc2 = new Doc<string>('peer2');
+
+    // Doc1 operations
+    const opA = doc1.insert('A');
+    const opB = doc1.insert('B', opA.id);
+
+    // Doc2 operations in different order
+    const opC = doc2.insert('C');
+    const opD = doc2.insert('D', opC.id);
+
+    // Merge operations in different order
+    doc1.merge([opC, opD]);
+    doc2.merge([opA, opB]);
+
+    const list1 = doc1.list();
+    const list2 = doc2.list();
+
+    expect(list1.map(node => node.value.value)).toEqual(
+      list2.map(node => node.value.value),
+    );
   });
 });

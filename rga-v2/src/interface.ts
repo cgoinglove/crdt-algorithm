@@ -12,9 +12,10 @@ export interface Operation<Item = any> {
   parent?: ID;
   value?: Item;
 }
+
 export interface RGA<Item> {
   insert(value: Item, parent?: ID): Operation<Item>;
   delete(id: ID): Operation<Item>;
-  pull(operations: Operation<Item>[]): void;
-  push(): Operation<Item>[];
+  merge(operations: Operation<Item>[]): void;
+  commit(): Operation<Item>[];
 }

@@ -45,7 +45,7 @@ export class NodeDeleteCommand<T> implements Command {
     if (this.executed) return;
     const node = head.find(node => node.value.id == this.operation.id);
     if (!node) throw new NotFoundNode(this.operation.id);
-    node.delete();
+    node.softDelete();
     this.node = node;
   }
   undo(): void {

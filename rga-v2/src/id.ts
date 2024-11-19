@@ -1,6 +1,8 @@
 import { ID } from './interface';
 import { LamportClock } from './lamport-clock';
 
+const SEPARATOR = '::';
+
 export class ClockId {
   private clock: LamportClock;
 
@@ -8,7 +10,7 @@ export class ClockId {
     this.clock = new LamportClock();
   }
   private id(clock: number) {
-    return `${this.clientId}-${clock}`;
+    return `${this.clientId}${SEPARATOR}${clock}`;
   }
   get() {
     return this.id(this.clock.getTime());
@@ -21,7 +23,7 @@ export class ClockId {
   }
 
   static extract(id: string) {
-    const [client, clock] = id.split('-');
+    const [client, clock] = id.split(SEPARATOR);
     if (typeof client != 'string' || isNaN(clock as unknown as number))
       throw new Error('ID Type Error');
     return {

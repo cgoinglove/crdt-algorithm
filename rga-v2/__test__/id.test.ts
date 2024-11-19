@@ -15,12 +15,11 @@ describe('ClockId', () => {
     const initialId = clockId.gen();
     const { clock: initialClock } = ClockId.extract(initialId);
 
-    // clock 값을 증가시키기 위해 updateClock 호출
     clockId.updateClock(initialClock + 10);
     const updatedId = clockId.gen();
     const { clock: updatedClock } = ClockId.extract(updatedId);
 
-    expect(updatedClock).toBe(initialClock + 11); // tick() 이후 값 증가 확인
+    expect(updatedClock).toBe(initialClock + 11);
   });
 
   it('should correctly extract client and clock from ID', () => {
@@ -37,16 +36,14 @@ describe('ClockId', () => {
     const clockId2 = new ClockId('client2');
 
     const id1 = clockId1.gen();
-    const id2 = clockId1.gen(); // clockId1에서 두 번째 ID 생성 (id1 < id2)
+    const id2 = clockId1.gen();
 
-    const id3 = clockId2.gen(); // clockId2에서 첫 번째 ID 생성
+    const id3 = clockId2.gen();
 
-    // 동일한 클라이언트에서 더 늦게 생성된 ID가 더 커야 함
     expect(ClockId.compare(id1, id2)).toBe(-1);
     expect(ClockId.compare(id2, id1)).toBe(1);
 
-    // 다른 클라이언트에서 clock 값이 다르면 그에 따라 비교
-    expect(ClockId.compare(id1, id3)).toBe(-1); // id1의 clock이 작을 가능성
+    expect(ClockId.compare(id1, id3)).toBe(-1);
   });
 
   it('should throw an error for invalid ID format', () => {
@@ -56,7 +53,7 @@ describe('ClockId', () => {
   });
 
   it('should throw an error for duplicate IDs', () => {
-    const id = 'client1-1';
+    const id = 'client1::1';
     expect(() => {
       ClockId.compare(id, id);
     }).toThrow('Duplicate ID');

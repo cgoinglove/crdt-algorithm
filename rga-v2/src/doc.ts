@@ -1,9 +1,3 @@
-import {
-  NodeCommand,
-  NodeInsertCommand,
-  NodeDeleteCommand,
-  generateNodeCommand,
-} from './command';
 import { ClockId } from './id';
 import { ID, Operation, RGA } from './interface';
 import { Node } from './node';
@@ -12,15 +6,13 @@ import { OperationToken } from './operation-token';
 const compareToken = (a: Operation, b: Operation) =>
   ClockId.compare(a.id, b.id);
 
+const NODE_ROOT_ID = 'DOC_ROOT';
+
 export class Doc<T> implements RGA<T> {
   private head!: Node<Operation<T>>;
-  private staging!: NodeCommand<T>[];
-  private cursor!: number; // for undo,redo
+  private staging!: Operation[];
   private clock!: ClockId;
-  private buffer!: {
-    insert: Operation[];
-    delete: Operation[];
-  };
+  private buffer!: Operation[];
   private operations!: {
     insert: Map<
       ID,
@@ -35,34 +27,62 @@ export class Doc<T> implements RGA<T> {
     this.init();
   }
   init() {
-    const root = new Node<T>('DOC-ROOT', undefined as unknown as T);
-    root.delete();
-    this.head = root;
-    this.buffer = {
-      insert: [],
-      delete: [],
-      update: [],
-    };
+    const root = OperationToken.ofInsert({
+      id: NODE_ROOT_ID,
+    });
+    const head = new Node<Operation<T>>(root);
+    head.softDelete();
+    this.head = head;
+    this.buffer = [];
     this.operations = {
       insert: new Map(),
       delete: new Set(),
-      update: new Map(),
     };
+    this.operations.insert.set(NODE_ROOT_ID, {
+      children: [],
+      operation: root,
+    });
     this.staging = [];
     this.clock = new ClockId(this.client);
-    this.cursor = 0;
   }
-  undo() {
-    const command = this.staging.pop();
-    command?.undo();
+  private recordOperation(operation: Operation<T>) {
+    switch (operation.type) {
+      case 'insert':
+        this.operations.insert.set(operation.id, {
+          operation,
+          children: [],
+        });
+        const parentId = operation.parent ?? NODE_ROOT_ID;
+        const parent = this.operations.insert.get(parentId)!;
+        parent.children.push(operation);
+        parent.children.sort(compareToken);
+        this.operations.insert.set(parentId, parent);
+        break;
+      case 'delete':
+        this.operations.delete.add(operation.id);
+        break;
+    }
   }
-
+  private canProcessOperation(operation: Operation<T>): boolean {
+    switch (operation.type) {
+      case 'insert':
+        return (
+          !operation.parent || this.operations.insert.has(operation.parent)
+        );
+      case 'delete':
+        return this.operations.insert.has(operation.id);
+      default:
+        return false;
+    }
+  }
   private resolveConflict(operation: Operation<T>): Operation<T> | undefined {
     const op = OperationToken.copy(operation);
     switch (operation.type) {
       case 'insert': {
-        const duplicate =
-          this.operations.insert.get(op.parent!)?.children ?? [];
+        const duplicate = this.operations.insert.get(
+          op.parent ?? NODE_ROOT_ID,
+        )?.children;
+        if (!duplicate) throw new Error('Not Found Node');
         const parent = duplicate.find(dp => compareToken(op, dp) == -1);
         if (parent) {
           op.parent = parent.id;
@@ -71,130 +91,99 @@ export class Doc<T> implements RGA<T> {
         return op;
       }
       case 'delete': {
-        if (!this.operations.delete.has(operation.id)) return undefined;
+        if (this.operations.delete.has(operation.id)) return undefined;
       }
     }
     return op;
   }
-
   private apply(operation: Operation<T>) {
-    switch (operation.type) {
-      case 'insert':
-        {
-          if (
-            operation.parent &&
-            !this.operations.insert.has(operation.parent)
-          ) {
-            this.buffer.insert.push(operation);
-            return;
-          }
-        }
-
-        break;
-      case 'delete':
-        {
-          if (!this.operations.insert.has(operation.id)) {
-            this.buffer.delete.push(operation);
-            return;
-          }
-        }
-        break;
-    }
     const resolve = this.resolveConflict(operation);
     if (!resolve) return;
 
-    const command = generateNodeCommand(resolve);
-    command.execute(this.head);
-    return command;
+    switch (resolve.type) {
+      case 'delete': {
+        this.head.find(node => node.value.id == resolve.id)!.softDelete();
+        break;
+      }
+      case 'insert': {
+        let parent: Node<Operation<T>> | undefined;
+        if (!resolve.parent) {
+          parent = this.head;
+        } else {
+          parent = this.head.find(node => node.value.id == resolve.parent);
+        }
+        if (!parent) throw new Error(`Not Found Node`);
+        parent.append(new Node<Operation<T>>(operation));
+      }
+    }
+
+    this.recordOperation(operation);
   }
-  private commit(operation: Operation) {
-    const command = this.apply(operation);
-    if (!command) throw new Error('Fail Operation');
-    this.staging.push(command);
-    return operation;
-  }
+
   insert(value: T, parent?: ID) {
     const operation = OperationToken.ofInsert({
       id: this.clock.gen(),
       value,
       parent,
     });
-    return this.commit(operation);
-  }
-  update(id: ID, value: T) {
-    const operation = OperationToken.ofUpdate({
-      id,
-      value,
-      clock: this.clock.gen(),
-    });
-    return this.commit(operation);
+    this.apply(operation);
+    this.staging.push(operation);
+    return operation;
   }
   delete(id: ID) {
     const operation = OperationToken.ofDelete<T>({
       id,
     });
-    return this.commit(operation);
+    this.apply(operation);
+    this.staging.push(operation);
+    return operation;
   }
-  pull(operations: Commit<T>): void {
-    // if (this.commits.has(commit.version)) return;
-    // this.commits.set(commit.version, commit);
-    // this.clock.updateClock(ClockId.extract(commit.version).clock);
+  merge(operations: Operation<T>[]): void {
+    this.clock.updateClock(
+      Math.max(...operations.map(op => ClockId.extract(op.id).clock)),
+    );
+    [...operations.sort(compareToken), ...this.buffer.splice(0)].forEach(
+      operation => {
+        if (!this.canProcessOperation(operation)) {
+          this.buffer.push(operation);
+          return;
+        }
+        this.apply(operation);
+      },
+    );
   }
 
-  push() {
-    const commands = this.staging
-      .splice(0, this.staging.length)
-      .filter(command => command.executed);
-
-    const groupByType = commands.reduce(
+  commit() {
+    const operations = this.staging.splice(0);
+    const groupByType = operations.reduce(
       (prev, cur) => {
-        prev[cur.operation.type].set(cur.operation.id, cur);
+        prev[cur.type].set(cur.id, cur);
         return prev;
       },
       {
-        update: new Map(),
         delete: new Map(),
         insert: new Map(),
-      } as Record<Operation['type'], Map<ID, NodeCommand<T>>>,
+      } as Record<Operation['type'], Map<ID, Operation>>,
     );
 
     Array.from(groupByType.insert.values())
       .reverse()
-      .forEach(command => {
-        const op = command.operation;
-        if (groupByType.update.has(op.id)) {
-          op.value = groupByType.update.get(op.id)!.operation.value;
-          groupByType.update.delete(op.id);
-        }
-
+      .forEach(op => {
         if (groupByType.delete.has(op.id)) {
           groupByType.delete.delete(op.id);
           groupByType.insert.delete(op.id);
-          this.head.find(op.id)?.delete();
-        }
-
-        const node = this.head.find(op.id);
-
-        if (op.parent && node?.left?.deleted) {
-          let parent: Node<T> | undefined = node?.left;
-          while (parent && parent.deleted) {
-            parent = parent?.left;
-          }
-          command.undo();
-          op.parent = parent?.id;
-          new NodeInsertCommand(op).execute(this.head);
+          this.head.find(node => node.value.id == op.id)?.delete();
         }
       });
-
-    return {
-      insert: Array.from(groupByType.insert.values()).map(v => v.operation),
-      delete: Array.from(groupByType.delete.values()).map(v => v.operation),
-      update: Array.from(groupByType.update.values()).map(v => v.operation),
-    };
+    return [
+      ...Array.from(groupByType.insert.values()),
+      ...Array.from(groupByType.delete.values()),
+    ];
   }
-  list(): Node<T>[] {
-    const list: Node<T>[] = [];
-    let node: Node<T> | undefined = this.head;
+
+  list(): Node<Operation<T>>[] {
+    const list: Node<Operation<T>>[] = [];
+    let node: Node<Operation<T>> | undefined = this.head;
     while (node) {
       if (!node.deleted) list.push(node);
       node = node.right;

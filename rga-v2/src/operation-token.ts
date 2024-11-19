@@ -5,7 +5,6 @@ export class OperationToken<Item = any> implements Operation<Item> {
     public type: Operation<Item>['type'],
     public id: ID,
     public parent?: ID,
-    public clock?: ID,
     public value?: Item,
   ) {}
 
@@ -14,18 +13,6 @@ export class OperationToken<Item = any> implements Operation<Item> {
       'insert',
       operation.id,
       operation.parent,
-      undefined,
-      operation.value,
-    );
-  }
-  static ofUpdate<T = any>(
-    operation: Pick<Operation<T>, 'id' | 'value' | 'clock'>,
-  ) {
-    return new OperationToken<T>(
-      'update',
-      operation.id,
-      undefined,
-      operation.clock,
       operation.value,
     );
   }
@@ -35,15 +22,15 @@ export class OperationToken<Item = any> implements Operation<Item> {
   }
   static hash(token: Operation<any>): string {
     const args: any[] = [token.type, token.id];
-    if (token.type == 'insert') args.push(token.parent, undefined, token.value);
-    if (token.type == 'update') args.push(undefined, token.clock, token.value);
+    if (token.type == 'insert') args.push(token.parent, token.value);
+
     return JSON.stringify(args);
   }
   static copy<T>(token: Operation<T>): Operation<T> {
     return OperationToken.fromHash(OperationToken.hash(token));
   }
   static fromHash<T>(hash: string): OperationToken<T> {
-    const [type, id, parent, clock, value] = JSON.parse(hash);
+    const [type, id, parent, value] = JSON.parse(hash);
     switch (type as Operation<T>['type']) {
       case 'insert':
         return OperationToken.ofInsert({
@@ -54,12 +41,6 @@ export class OperationToken<Item = any> implements Operation<Item> {
       case 'delete':
         return OperationToken.ofDelete({
           id,
-        });
-      case 'update':
-        return OperationToken.ofUpdate({
-          id,
-          clock,
-          value,
         });
       default:
         throw new Error('TypeError');
