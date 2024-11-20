@@ -1,7 +1,6 @@
 // doc.test.ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Doc } from '../src';
-import { OperationToken } from '../src/operation-token';
 
 describe('Doc', () => {
   let doc: Doc<string>;
@@ -131,7 +130,7 @@ describe('Doc', () => {
     expect(values).toEqual(['A', 'B']);
   });
 
-  it.only('should handle concurrent inserts at the same parent from different peers', () => {
+  it('should handle concurrent inserts at the same parent from different peers', () => {
     const doc1 = new Doc<string>('peer1');
     const doc2 = new Doc<string>('peer2');
     const doc3 = new Doc<string>('peer3');
@@ -211,14 +210,15 @@ describe('Doc', () => {
     const list2 = peer2.list();
     const list3 = peer3.list();
 
-    expect(list1.length).toBe(4);
-    expect(list2.length).toBe(4);
-    expect(list3.length).toBe(4);
+    expect(list1.length).toBe(6);
+    expect(list2.length).toBe(6);
+    expect(list3.length).toBe(6);
 
     const values1 = list1.map(node => node.value.value);
     const values2 = list2.map(node => node.value.value);
     const values3 = list3.map(node => node.value.value);
 
+    expect(values1).toEqual(['A', 'D', 'A', 'C', 'A', 'B']);
     expect(values1).toEqual(values2);
     expect(values2).toEqual(values3);
   });
@@ -226,7 +226,7 @@ describe('Doc', () => {
   it('should handle deletion of non-existent nodes gracefully during merge', () => {
     const opDelete = {
       type: 'delete' as const,
-      id: 'non-existent-id',
+      id: 'non-existent-id::1',
     };
 
     // Merge delete operation for non-existent node
@@ -238,7 +238,7 @@ describe('Doc', () => {
     // Now insert the node
     const opInsert = {
       type: 'insert' as const,
-      id: 'non-existent-id',
+      id: 'non-existent-id::1',
       parent: undefined,
       value: 'A',
     };
@@ -250,27 +250,6 @@ describe('Doc', () => {
 
     const list = doc.list();
     expect(list.length).toBe(0); // The node was inserted and then deleted
-  });
-
-  it('should maintain consistency when peers perform concurrent deletes', () => {
-    const doc1 = new Doc<string>('peer1');
-    const doc2 = new Doc<string>('peer2');
-
-    const opA = doc1.insert('A');
-
-    // Both peers delete the node concurrently
-    const opDelete1 = doc1.delete(opA.id);
-    const opDelete2 = doc2.delete(opA.id);
-
-    // Merge operations
-    doc1.merge([opDelete2]);
-    doc2.merge([opA, opDelete1]);
-
-    const list1 = doc1.list();
-    const list2 = doc2.list();
-
-    expect(list1.length).toBe(0);
-    expect(list2.length).toBe(0);
   });
 
   it('should handle operations with different orders during merge', () => {

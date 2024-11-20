@@ -1,152 +1,143 @@
 import { describe, it, expect } from 'vitest';
 import { Node } from '../src/node';
+import { Operation } from '../src';
 
-describe('Node 클래스 테스트', () => {
-  it('노드 생성 테스트', () => {
-    const node = new Node('1', 'A');
-    expect(node.id).toBe('1');
-    expect(node.value).toBe('A');
+describe('Node', () => {
+  it('should create a node with operation', () => {
+    const operation: Operation<string> = {
+      id: '1',
+      value: 'A',
+      type: 'insert',
+    };
+    const node = new Node(operation);
+
+    expect(node.value.id).toBe('1');
+    expect(node.value.value).toBe('A');
     expect(node.deleted).toBe(false);
     expect(node.left).toBeUndefined();
     expect(node.right).toBeUndefined();
   });
 
-  it('append 함수 테스트', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
+  it('should append nodes correctly', () => {
+    const op1: Operation<string> = { id: '1', value: 'A', type: 'insert' };
+    const op2: Operation<string> = { id: '2', value: 'B', type: 'insert' };
+    const op3: Operation<string> = { id: '3', value: 'C', type: 'insert' };
 
-    nodeA.append(nodeB);
+    const node1 = new Node(op1);
+    const node2 = new Node(op2);
+    const node3 = new Node(op3);
 
-    expect(nodeA.right).toBe(nodeB);
-    expect(nodeB.left).toBe(nodeA);
+    node1.append(node2);
+    node2.append(node3);
+
+    expect(node1.right).toBe(node2);
+    expect(node2.left).toBe(node1);
+    expect(node2.right).toBe(node3);
+    expect(node3.left).toBe(node2);
   });
 
-  it('prepend 함수 테스트', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
+  it('should prepend nodes correctly', () => {
+    const op1: Operation<string> = { id: '1', value: 'A', type: 'insert' };
+    const op2: Operation<string> = { id: '2', value: 'B', type: 'insert' };
+    const op3: Operation<string> = { id: '3', value: 'C', type: 'insert' };
 
-    nodeA.prepend(nodeB);
+    const node1 = new Node(op1);
+    const node2 = new Node(op2);
+    const node3 = new Node(op3);
 
-    expect(nodeA.left).toBe(nodeB);
-    expect(nodeB.right).toBe(nodeA);
+    node1.prepend(node2);
+    node2.prepend(node3);
+
+    expect(node1.left).toBe(node2);
+    expect(node2.right).toBe(node1);
+    expect(node2.left).toBe(node3);
+    expect(node3.right).toBe(node2);
   });
 
-  it('append 함수: 중간에 삽입 테스트', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
+  it('should find nodes correctly', () => {
+    const op1: Operation<string> = { id: '1', value: 'A', type: 'insert' };
+    const op2: Operation<string> = { id: '2', value: 'B', type: 'insert' };
+    const op3: Operation<string> = { id: '3', value: 'C', type: 'insert' };
 
-    nodeA.append(nodeC); // A -> C
-    nodeA.append(nodeB); // A -> B -> C
+    const node1 = new Node(op1);
+    const node2 = new Node(op2);
+    const node3 = new Node(op3);
 
-    expect(nodeA.right).toBe(nodeB);
-    expect(nodeB.left).toBe(nodeA);
-    expect(nodeB.right).toBe(nodeC);
-    expect(nodeC.left).toBe(nodeB);
+    node1.append(node2);
+    node2.append(node3);
+
+    const foundNode = node1.find(node => node.value.id == '3');
+    expect(foundNode).toBe(node3);
+
+    const notFoundNode = node1.find(node => node.value.id == '4');
+    expect(notFoundNode).toBeUndefined();
   });
 
-  it('prepend 함수: 중간에 삽입 테스트', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
+  it('should soft delete a node', () => {
+    const operation: Operation<string> = {
+      id: '1',
+      value: 'A',
+      type: 'insert',
+    };
+    const node = new Node(operation);
 
-    nodeC.prepend(nodeA); // A -> C
-    nodeC.prepend(nodeB); // A -> B -> C
-
-    expect(nodeC.left).toBe(nodeB);
-    expect(nodeB.right).toBe(nodeC);
-    expect(nodeB.left).toBe(nodeA);
-    expect(nodeA.right).toBe(nodeB);
+    node.softDelete();
+    expect(node.deleted).toBe(true);
   });
 
-  it('delete 함수 테스트 (소프트 삭제)', () => {
-    const nodeA = new Node('1', 'A');
-    nodeA.delete();
-    expect(nodeA.deleted).toBe(true);
+  it('should physically delete a node', () => {
+    const op1: Operation<string> = { id: '1', value: 'A', type: 'insert' };
+    const op2: Operation<string> = { id: '2', value: 'B', type: 'insert' };
+    const op3: Operation<string> = { id: '3', value: 'C', type: 'insert' };
+
+    const node1 = new Node(op1);
+    const node2 = new Node(op2);
+    const node3 = new Node(op3);
+
+    node1.append(node2);
+    node2.append(node3);
+
+    node2.delete();
+
+    expect(node1.right).toBe(node3);
+    expect(node3.left).toBe(node1);
+    expect(node2.left).toBeUndefined();
+    expect(node2.right).toBeUndefined();
   });
 
-  it('delete 함수 테스트 (강제 삭제)', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
+  it('should find head and tail correctly', () => {
+    const op1: Operation<string> = { id: '1', value: 'A', type: 'insert' };
+    const op2: Operation<string> = { id: '2', value: 'B', type: 'insert' };
+    const op3: Operation<string> = { id: '3', value: 'C', type: 'insert' };
 
-    nodeA.append(nodeB);
-    nodeB.append(nodeC); // A -> B -> C
+    const node1 = new Node(op1);
+    const node2 = new Node(op2);
+    const node3 = new Node(op3);
 
-    nodeB.delete(true); // B 삭제, A -> C
+    node1.append(node2);
+    node2.append(node3);
 
-    expect(nodeA.right).toBe(nodeC);
-    expect(nodeC.left).toBe(nodeA);
+    const head = node2.getHead();
+    const tail = node2.getTail();
+
+    expect(head).toBe(node1);
+    expect(tail).toBe(node3);
   });
 
-  it('delete 함수 테스트: 중간 노드 강제 삭제', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
+  it('should slice the node correctly', () => {
+    const op1: Operation<string> = { id: '1', value: 'A', type: 'insert' };
+    const op2: Operation<string> = { id: '2', value: 'B', type: 'insert' };
 
-    nodeA.append(nodeB);
-    nodeB.append(nodeC); // A -> B -> C
+    const node1 = new Node(op1);
+    const node2 = new Node(op2);
 
-    nodeB.delete(true); // B 강제 삭제
+    node1.append(node2);
 
-    expect(nodeA.right).toBe(nodeC);
-    expect(nodeC.left).toBe(nodeA);
-    expect(nodeB.deleted).toBe(false); // 노드는 강제 삭제 되었지만, 실제로는 '삭제' 상태 아님
-  });
+    const [left, slicedNode] = node2.slice();
 
-  it('마지막 노드 찾기', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
-
-    nodeA.append(nodeB);
-    nodeB.append(nodeC); // A -> B -> C
-
-    expect(nodeA.getTail()).toBe(nodeB.getTail());
-    expect(nodeA.getTail()).toBe(nodeC.getTail());
-    expect(nodeC).toBe(nodeC.getTail());
-  });
-
-  it('첫번쨰 노드 찾기', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
-
-    nodeA.append(nodeB);
-    nodeB.append(nodeC); // A -> B -> C
-
-    expect(nodeA.getHead()).toBe(nodeB.getHead());
-    expect(nodeA.getHead()).toBe(nodeC.getHead());
-    expect(nodeA).toBe(nodeC.getHead());
-  });
-
-  it('여러 노드 한번에 append,prepend', () => {
-    const nodeA = new Node('1', 'A');
-    const nodeB = new Node('2', 'B');
-    const nodeC = new Node('3', 'C');
-    const nodeD = new Node('4', 'D');
-    const nodeE = new Node('5', 'E');
-    const nodeF = new Node('6', 'F');
-    const nodeG = new Node('7', 'G');
-    const nodeH = new Node('8', 'H');
-
-    nodeA.append(nodeB);
-    nodeC.append(nodeD);
-    nodeE.append(nodeF);
-    nodeG.append(nodeH);
-
-    nodeB.append(nodeG); // A->B->G->H
-
-    expect(nodeG.left).toBe(nodeB);
-
-    nodeB.append(nodeC); // A->B->->C->D->G->H
-
-    expect(nodeG.left).toBe(nodeD);
-    expect(nodeD.right).toBe(nodeG);
-
-    nodeG.prepend(nodeE); // A->B->->C->D->E->F->G->H
-
-    expect(nodeG.left).toBe(nodeF);
-    expect(nodeF.right).toBe(nodeG);
+    expect(left).toBe(node1);
+    expect(slicedNode).toBe(node2);
+    expect(node1.right).toBeUndefined();
+    expect(node2.left).toBeUndefined();
   });
 });

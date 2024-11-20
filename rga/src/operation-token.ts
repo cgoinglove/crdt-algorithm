@@ -1,39 +1,47 @@
-import { Operation } from './interface';
+import { ID, Operation } from './interface';
 
-export class OperationToken implements Operation {
+export class OperationToken<Item = any> implements Operation<Item> {
   private constructor(
-    public type: Operation['type'],
-    public id: Operation['id'],
-    public parent?: Operation['parent'],
-    public content?: Operation['content'],
+    public type: Operation<Item>['type'],
+    public id: ID,
+    public parent?: ID,
+    public value?: Item,
   ) {}
 
-  static ofInsert(operation: Pick<Operation, 'content' | 'id' | 'parent'>) {
-    return new OperationToken(
+  static ofInsert<T = any>(operation: Omit<Operation<T>, 'type'>) {
+    return new OperationToken<T>(
       'insert',
       operation.id,
       operation.parent,
-      operation.content,
+      operation.value,
     );
   }
-  static ofDelete(operation: Pick<Operation, 'id'>) {
-    return new OperationToken('delete', operation.id);
+
+  static ofDelete<T>(operation: Pick<Operation<T>, 'id'>) {
+    return new OperationToken<T>('delete', operation.id);
   }
-  static hash(token: Operation): string {
+  static hash(token: Operation<any>): string {
     const args: any[] = [token.type, token.id];
-    if (token.type == 'insert') args.push(token.parent, token.content);
+    if (token.type == 'insert') args.push(token.parent, token.value);
+
     return JSON.stringify(args);
   }
-  static copy(token: Operation): Operation {
+  static copy<T>(token: Operation<T>): Operation<T> {
     return OperationToken.fromHash(OperationToken.hash(token));
   }
-  static fromHash(hash: string): OperationToken {
-    const [type, id, parent, content] = JSON.parse(hash);
-    switch (type as Operation['type']) {
+  static fromHash<T>(hash: string): OperationToken<T> {
+    const [type, id, parent, value] = JSON.parse(hash);
+    switch (type as Operation<T>['type']) {
       case 'insert':
-        return new OperationToken(type, id, parent ?? undefined, content);
+        return OperationToken.ofInsert({
+          id,
+          parent,
+          value,
+        });
       case 'delete':
-        return new OperationToken(type, id);
+        return OperationToken.ofDelete({
+          id,
+        });
       default:
         throw new Error('TypeError');
     }

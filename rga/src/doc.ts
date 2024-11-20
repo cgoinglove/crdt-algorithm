@@ -79,6 +79,7 @@ export class Doc<T> implements RGA<T> {
     const op = OperationToken.copy(operation);
     switch (operation.type) {
       case 'insert': {
+        if (this.operations.insert.has(operation.id)) return undefined;
         const duplicate = this.operations.insert.get(
           op.parent ?? NODE_ROOT_ID,
         )?.children;
@@ -175,6 +176,7 @@ export class Doc<T> implements RGA<T> {
           this.head.find(node => node.value.id == op.id)?.delete();
         }
       });
+
     return [
       ...Array.from(groupByType.insert.values()),
       ...Array.from(groupByType.delete.values()),

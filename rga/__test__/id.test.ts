@@ -1,57 +1,61 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createId, extractId, compareId } from '../src/id';
-import { LamportClock } from '../src/lamport-clock';
-import { ID } from '../src/interface';
+import { describe, it, expect } from 'vitest';
+import { ClockId } from '../src/id';
 
-vi.mock('@repo/shared', () => ({
-  autoIncrement: vi.fn().mockReturnValue(1),
-}));
+describe('ClockId', () => {
+  it('should generate unique IDs', () => {
+    const clockId1 = new ClockId('client1');
+    const id1 = clockId1.gen();
+    const id2 = clockId1.gen();
 
-describe('ID Generation and Handling', () => {
-  it('createId는 랜덤 ID와 LamportClock의 값을 결합한 문자열을 생성해야 한다', () => {
-    const clock = new LamportClock();
-    const id = createId('client');
-
-    const [client, clockValue] = id.split('-');
-    expect(client).toBe('client');
-    expect(+clockValue).toBe(clock.tick()); // LamportClock의 tick 값
+    expect(id1).not.toBe(id2);
   });
 
-  it('extractId는 nodeId와 clock을 분리하여 반환해야 한다', () => {
-    const id = 'client-123';
-    const result = extractId(id);
+  it('should update the clock and generate correct IDs', () => {
+    const clockId = new ClockId('client1');
+    const initialId = clockId.gen();
+    const { clock: initialClock } = ClockId.extract(initialId);
 
-    expect(result).toEqual({
-      client: 'client',
-      clock: 123,
-    });
+    clockId.updateClock(initialClock + 10);
+    const updatedId = clockId.gen();
+    const { clock: updatedClock } = ClockId.extract(updatedId);
+
+    expect(updatedClock).toBe(initialClock + 11);
   });
 
-  it('extractId는 잘못된 ID 형식일 때 오류를 발생시켜야 한다', () => {
-    const invalidId = 'invalid-id';
-    expect(() => extractId(invalidId as ID)).toThrow('ID Type Error');
+  it('should correctly extract client and clock from ID', () => {
+    const clockId = new ClockId('client1');
+    const id = clockId.gen();
+    const { client, clock } = ClockId.extract(id);
+
+    expect(client).toBe('client1');
+    expect(clock).toBeGreaterThan(0);
   });
 
-  it('compareId는 clock 값을 기준으로 ID를 비교해야 한다', () => {
-    const id1 = 'node1-10';
-    const id2 = 'node2-15';
+  it('should compare two IDs correctly', () => {
+    const clockId1 = new ClockId('client1');
+    const clockId2 = new ClockId('client2');
 
-    expect(compareId(id1, id2)).toBe(-1);
-    expect(compareId(id2, id1)).toBe(1);
+    const id1 = clockId1.gen();
+    const id2 = clockId1.gen();
+
+    const id3 = clockId2.gen();
+
+    expect(ClockId.compare(id1, id2)).toBe(-1);
+    expect(ClockId.compare(id2, id1)).toBe(1);
+
+    expect(ClockId.compare(id1, id3)).toBe(-1);
   });
 
-  it('compareId는 nodeId 값이 같은 clock에서 비교되어야 한다', () => {
-    const id1 = 'node1-10';
-    const id2 = 'node2-10';
-
-    expect(compareId(id1, id2)).toBe(-1);
-    expect(compareId(id2, id1)).toBe(1);
+  it('should throw an error for invalid ID format', () => {
+    expect(() => {
+      ClockId.extract('invalid-id');
+    }).toThrow('ID Type Error');
   });
 
-  it('compareId는 중복된 ID일 때 오류를 발생시켜야 한다', () => {
-    const id1 = 'node1-10';
-    const id2 = 'node1-10';
-
-    expect(() => compareId(id1, id2)).toThrow('Duplicate ID');
+  it('should throw an error for duplicate IDs', () => {
+    const id = 'client1::1';
+    expect(() => {
+      ClockId.compare(id, id);
+    }).toThrow('Duplicate ID');
   });
 });

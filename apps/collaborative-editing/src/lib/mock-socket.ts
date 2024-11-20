@@ -2,10 +2,12 @@ import { EventBus } from './event-bus';
 import { Operation } from 'rga';
 
 type EventType = {
-  commit: {
-    author: string;
+  push: {
+    version: string;
     operations: Operation[];
-    version:string
+  };
+  pushRequest: {
+    ignoreVersions: string[];
   };
 };
 

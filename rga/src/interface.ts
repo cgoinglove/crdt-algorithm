@@ -1,23 +1,21 @@
-export type ID = `${string}-${number}`;
+export interface Command {
+  executed: boolean;
+  execute(...args: any[]): any;
+  undo(...args: any[]): any;
+}
 
-export interface Operation<Item = string> {
+export type ID = string; //`${client}-${number}`
+
+export interface Operation<Item = any> {
   type: 'insert' | 'delete';
   id: ID;
   parent?: ID;
-  content?: Item;
-}
-
-export interface Commit<Item> {
-  author: string;
-  version: string;
-  timestamp: number;
-  operations: Operation<Item>[];
+  value?: Item;
 }
 
 export interface RGA<Item> {
-  insert(content: Item, parent?: ID): Operation;
-  delete(id: ID): void;
-  stringify(): string;
-  merge(token: Operation<Item> | Operation<Item>[]): void;
+  insert(value: Item, parent?: ID): Operation<Item>;
+  delete(id: ID): Operation<Item>;
+  merge(operations: Operation<Item>[]): void;
   commit(): Operation<Item>[];
 }

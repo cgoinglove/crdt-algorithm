@@ -4,17 +4,17 @@ import { Operation } from '../src/interface';
 
 describe('OperationToken', () => {
   it('ofInsert를 사용하여 insert 작업을 생성해야 한다', () => {
-    const operation: Pick<Operation, 'content' | 'id' | 'parent'> = {
+    const operation: Pick<Operation, 'value' | 'id' | 'parent'> = {
       id: `id-1`,
       parent: `id-2`,
-      content: 'hello',
+      value: 'hello',
     };
     const token = OperationToken.ofInsert(operation);
 
     expect(token.type).toBe('insert');
     expect(token.id).toEqual(`id-1`);
     expect(token.parent).toEqual(`id-2`);
-    expect(token.content).toBe('hello');
+    expect(token.value).toBe('hello');
   });
 
   it('ofDelete를 사용하여 delete 작업을 생성해야 한다', () => {
@@ -26,7 +26,7 @@ describe('OperationToken', () => {
     expect(token.type).toBe('delete');
     expect(token.id).toEqual(`id-1`);
     expect(token.parent).toBeUndefined();
-    expect(token.content).toBeUndefined();
+    expect(token.value).toBeUndefined();
   });
 
   it('insert 작업을 올바르게 해시해야 한다', () => {
@@ -34,7 +34,7 @@ describe('OperationToken', () => {
       type: 'insert',
       id: `id-1`,
       parent: `id-2`,
-      content: 'hello',
+      value: 'hello',
     };
     const hash = OperationToken.hash(operation);
 
@@ -58,7 +58,7 @@ describe('OperationToken', () => {
     expect(token.type).toBe('insert');
     expect(token.id).toEqual(`id-1`);
     expect(token.parent).toEqual(`id-2`);
-    expect(token.content).toBe('hello');
+    expect(token.value).toBe('hello');
   });
 
   it('해시에서 delete 작업을 올바르게 재생성해야 한다', () => {
@@ -67,7 +67,7 @@ describe('OperationToken', () => {
     expect(token.type).toBe('delete');
     expect(token.id).toEqual(`id-1`);
     expect(token.parent).toBeUndefined();
-    expect(token.content).toBeUndefined();
+    expect(token.value).toBeUndefined();
   });
 
   it('잘못된 타입에 대해 예외를 발생시켜야 한다', () => {
