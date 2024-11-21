@@ -21,12 +21,16 @@ export const useRgaDocument = (client: string) => {
 
   const [tick, nextTick] = useReducer(v => ++v, 0);
 
-  const doc = useMemo(() => new Doc<string>(client + Date.now()), []);
+  const doc = useMemo(() => new Doc<string>(client), []);
   const commits = useMemo<Map<string, Operation[]>>(() => new Map(), []);
   const list = useRef<Operation<string>[]>([]);
 
   const text = useMemo(() => {
     return list.current.map(v => v.value!).join('');
+  }, [tick]);
+
+  const staging = useMemo(() => {
+    return doc['staging'];
   }, [tick]);
 
   const _updateList = useCallback(() => {
@@ -47,6 +51,7 @@ export const useRgaDocument = (client: string) => {
   }, []);
 
   const commit = useCallback(() => {
+    if (!network) return;
     const operations = doc.commit();
 
     if (!operations.length) return;
@@ -54,7 +59,8 @@ export const useRgaDocument = (client: string) => {
       version: createVersion(),
       operations,
     });
-  }, []);
+  }, [network]);
+
   useEffect(() => {
     if (!network) return;
 
@@ -82,6 +88,8 @@ export const useRgaDocument = (client: string) => {
       ignoreVersions: Array.from(commits.keys()),
     });
 
+    commit();
+
     return () => {
       offPushEvent();
       offPushRequestEvent();
@@ -92,6 +100,7 @@ export const useRgaDocument = (client: string) => {
     text,
     input,
     remove,
+    staging,
     commit,
     network,
     setNetwork,
