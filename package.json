@@ -5,9 +5,9 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "test:rga": "turbo -F rga test",
-    "dev:editor": "turbo -F collaborative-editing dev",
+    "dev:demo": "turbo -F demo dev",
     "type-check": "turbo type-check",
-    "clean": "turbo clean",
+    "clean": "node ./script-helper/clean.js",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
