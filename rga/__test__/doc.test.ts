@@ -244,7 +244,7 @@ describe('Doc', () => {
     };
 
     doc.merge([opInsert]);
-
+    
     // Buffered delete operation should now be processed
     expect(doc['buffer'].length).toBe(0);
 

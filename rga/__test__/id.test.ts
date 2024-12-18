@@ -49,7 +49,7 @@ describe('ClockId', () => {
   it('should throw an error for invalid ID format', () => {
     expect(() => {
       ClockId.extract('invalid-id');
-    }).toThrow('ID Type Error');
+    }).toThrow('Invalid ID format');
   });
 
   it('should throw an error for duplicate IDs', () => {

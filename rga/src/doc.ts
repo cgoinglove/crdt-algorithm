@@ -5,7 +5,7 @@ import { OperationToken } from './operation-token'
 
 const compareToken = (a: Operation, b: Operation) => {
   if (a.id == b.id && a.type != b.type) {
-    return a.type == 'insert' ? 1 : -1
+    return a.type == 'insert' ? -1 : 11
   }
 
   return ClockId.compare(a.id, b.id)
