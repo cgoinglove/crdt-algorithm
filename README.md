@@ -1,6 +1,43 @@
-# CRDT Algorithm
+# CRDT RGA Implementation & Demo Guide
 
-RGA
+English | [한국어](./docs/kr.md)
 
-동시문서 편집을 예로 구현을 하지만
-텍스트 편집기의 기능 undo,redo, 붙여넣기(insertBatch) 등 도 같이 구현하기 위해 Command 패턴을 사용하여 개발하려고 했었으나, 코드내용이나 class 들의 설계가 내가 해당 프로젝트를 만든 목적과 점점 멀어지고 복잡해졌기때문에 전부 제외함
+This project demonstrates an implementation of the **CRDT (Conflict-free Replicated Data Type)** called **RGA (Replicated-Growable Array)**, along with a simple demo page that showcases its functionality.
+
+- **Site**: [Demo](https://crdt-algorithm-demo.vercel.app)
+- **Post**: [Post](https://cgoinglove.github.io/post/crdt-rga-%EC%A7%81%EC%A0%91-%EA%B5%AC%ED%98%84%EA%B8%B0:-%EC%B6%A9%EB%8F%8C-%EC%97%86%EB%8A%94-%EB%8F%99%EC%8B%9C%EB%AC%B8%EC%84%9C-%ED%8E%B8%EC%A7%91,-%EC%9D%B4%EB%A0%87%EA%B2%8C-%EB%A7%8C%EB%93%A0%EB%8B%A4)
+
+## Demo (demo)
+
+- **Goal**: Utilize the RGA package to build a simple document-editing feature
+- **Key Components**:
+  - `src/components/editor.tsx`: Text editor UI
+  - `src/hooks/use-rga-document.ts`: Hook that imports and manages RGA logic in the local state
+  - `lib/mock-socket.ts`, `event-bus.ts`: Simplified network simulation to send and receive operations across multiple tabs (windows)
+
+### How to Run
+
+- **Start the development server** by running the following command in the root directory:
+  ```bash
+  pnpm dev:demo
+  ```
+  - Then open the provided local address in your browser to view the demo.
+
+## RGA (rga)
+
+- **Implementation Details**:
+
+  - Core CRDT RGA algorithm logic (`doc.ts`, `node.ts`, `operation-token.ts`, etc.)
+  - Includes Lamport Clock, node linking, and `Tombstone` (deleted node) handling for concurrent editing
+
+- **Tests**:
+  - The `__test__` folder contains various test files to validate the logic
+  - Examples: `doc.test.ts`, `node.test.ts`, `operation-token.test.ts`, `lamport-clock.test.ts`, etc.
+
+### Testing
+
+- To run the test scripts for the RGA package:
+  ```bash
+  pnpm test:rga
+  ```
+  - This command executes the unit tests for the RGA logic.
